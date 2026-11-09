@@ -161,7 +161,7 @@ browser_summary :: proc(b: ^Browser) -> string {
 	noun := "items"
 	if len(b.visible) == 1 {noun = "item"}
 	total := fmt.tprintf(
-		"%d %s  |  %s in files",
+		"%d %s    %s in files",
 		len(b.visible),
 		noun,
 		format_size(b.visible_bytes),
@@ -169,7 +169,7 @@ browser_summary :: proc(b: ^Browser) -> string {
 	if len(b.visible) == 0 {return total}
 	if len(b.marks) != 1 {
 		return fmt.tprintf(
-			"%s  |  selected: %d items (%s)",
+			"%s    selected: %d items (%s)",
 			total,
 			len(b.marks),
 			format_size(b.marked_bytes),
@@ -187,7 +187,7 @@ browser_summary :: proc(b: ^Browser) -> string {
 	case .Symlink:
 		detail = "symbolic link"
 	}
-	return fmt.tprintf("%s  |  selected: %s", total, detail)
+	return fmt.tprintf("%s    selected: %s", total, detail)
 }
 
 reveal_rows :: proc(selected, first: ^int, count, visible_rows: int) {
