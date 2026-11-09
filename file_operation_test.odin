@@ -131,7 +131,6 @@ trash_completion_keeps_scroll_and_current_cursor :: proc(t: ^testing.T) {
 		defer delete(op.error)
 		file_operation_run(&op)
 		testing.expect_value(t, op.failed, 0)
-		testing.expect_value(t, op.completed, 1)
 		// The user can continue browsing while the worker completes.
 		if moved_cursor {selection_single(&b, 60)}
 		expected := strings.clone(b.entries[b.visible[moved_cursor ? 60 : 46]].name)

@@ -20,7 +20,7 @@ File_Operation :: struct {
 	allocator:          mem.Allocator,
 	worker:             ^thread.Thread,
 	cancel:             bool, // Atomic. All other mutable fields belong to the worker until publication.
-	completed, failed:  int,
+	failed:             int,
 	error:              string,
 }
 
@@ -50,7 +50,7 @@ file_operation_start :: proc(b: ^Browser, trash: bool) {
 	op.kind = trash ? .Trash : .Copy
 	op.sources = paths
 	op.target = strings.clone(b.path)
-	op.trash_home = trash_home_path()
+	if trash {op.trash_home = trash_home_path()}
 	op.storage, op.allocator = b.storage, context.allocator
 	op.worker = thread.create_and_start_with_data(op, file_operation_worker, name = "stuff-files")
 	if op.worker == nil {
@@ -63,7 +63,8 @@ file_operation_start :: proc(b: ^Browser, trash: bool) {
 }
 
 file_operation_run :: proc(op: ^File_Operation) {
-	buffer := make([]u8, 1024 * 1024)
+	buffer: []u8
+	if op.kind == .Copy {buffer = make([]u8, 1024 * 1024)}
 	defer delete(buffer)
 	mounts: [dynamic]Mount
 	if op.kind == .Trash {mounts, _ = mounts_read()}
@@ -73,7 +74,7 @@ file_operation_run :: proc(op: ^File_Operation) {
 		err: os.Error
 		if op.kind ==
 		   .Copy {err = file_copy(op, source, buffer)} else {err = trash_file(source, op.trash_home, mounts[:])}
-		if err == nil {op.completed += 1} else {
+		if err != nil {
 			op.failed += 1
 			if op.error == "" {
 				_, name := os.split_path(source)
@@ -101,13 +102,7 @@ file_operation_apply :: proc(b: ^Browser, op: ^File_Operation) -> bool {
 		cursor := b.selected
 		if err := browser_load(b, b.path); err != nil {
 			browser_message(b, fmt.tprintf("cannot refresh folder: %v", err))
-		} else {
-			for source, i in b.visible {
-				if b.entries[source].name == location.selected_name {cursor = i; break}
-			}
-			selection_single(b, cursor)
-			b.first = min(location.first, max(0, len(b.visible) - 1))
-		}
+		} else {browser_restore_location(b, location, cursor)}
 	}
 	if op.failed > 0 {
 		verb := op.kind == .Copy ? "copy" : "move to trash"

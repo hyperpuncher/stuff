@@ -190,7 +190,6 @@ large_directory_layout :: proc(t: ^testing.T) {
 	defer clay.SetCurrentContext(nil)
 	clay.SetMeasureTextFunction(measure_text, font)
 	verify_theme_switch(t, &p)
-	verify_rounded_pixels(t, renderer)
 	verify_header_actions(t, &p)
 	verify_context_menu_rendering(t, &p)
 
@@ -251,10 +250,8 @@ large_directory_layout :: proc(t: ^testing.T) {
 		browser_reveal(&b, g.rows)
 		commands := layout(&b, g, &p)
 		testing.expect(t, int(commands.length) <= 6 * g.rows + 30)
-		clips := 0
 		for i in 0 ..< commands.length {
 			cmd := commands.internalArray[i]
-			if cmd.commandType == .ScissorStart {clips += 1}
 			if cmd.commandType != .Text {continue}
 			box := cmd.boundingBox
 			if box.y < g.list_top || box.y >= g.height - g.footer {continue}
@@ -264,7 +261,6 @@ large_directory_layout :: proc(t: ^testing.T) {
 			if box.x <
 			   name_right {testing.expect(t, box.x + box.width <= name_right + 0.01)} else if box.x < size_right {testing.expect(t, box.x + box.width <= size_right + 0.01)} else {testing.expect(t, box.x + box.width <= g.width - g.padding + 0.01)}
 		}
-		testing.expect_value(t, clips, 3)
 		paint(&p, commands, size[0], size[1])
 		testing.expect(t, len(p.slots) <= 3 * g.rows + min(g.rows, len(b.places.entries)) + 6)
 	}

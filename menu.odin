@@ -173,9 +173,7 @@ menu_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 		.Select_All = "select all",
 	}
 	// Keep measured geometry available for input before the popup's first frame.
-	b.menu.width = 0
-	for name in names {b.menu.width = max(b.menu.width, f32(text_width(p.font, name)))}
-	b.menu.width += 32 * g.scale
+	b.menu.width = f32(text_width(p.font, names[.Trash])) + 32 * g.scale
 	if !b.menu.active {return}
 	box := menu_box(b.menu, g)
 	padding := 21 * g.scale

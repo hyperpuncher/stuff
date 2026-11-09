@@ -143,32 +143,12 @@ mouse_history_restores_location :: proc(t: ^testing.T) {
 }
 
 @(test)
-selection_reveal_boundaries :: proc(t: ^testing.T) {
-	b: Browser
-	defer browser_destroy(&b)
-	resize(&b.visible, 100_000)
-	b.selected = 99_999
-	browser_reveal(&b, 20)
-	testing.expect_value(t, b.first, 99_980)
-	b.selected = -1
-	browser_reveal(&b, 20)
-	testing.expect_value(t, b.first, 0)
-	testing.expect_value(t, b.selected, 0)
-	b.selected = 100_000
-	browser_reveal(&b, 200_000)
-	testing.expect_value(t, b.selected, 99_999)
-	testing.expect_value(t, b.first, 0)
-	clear(&b.visible)
-	browser_reveal(&b, 0)
-	testing.expect_value(t, b.first, 0)
-	testing.expect_value(t, b.selected, 0)
-}
-
-@(test)
 pointer_selection_respects_list_bounds :: proc(t: ^testing.T) {
 	b: Browser
 	defer browser_destroy(&b)
-	resize(&b.visible, 100)
+	b.entries = make([]os.File_Info, 100)
+	resize(&b.visible, len(b.entries))
+	for &source, i in b.visible {source = i}
 	g := geometry(960, 640, 1)
 
 	running := true

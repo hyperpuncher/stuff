@@ -218,6 +218,15 @@ browser_location :: proc(b: ^Browser) -> History_Entry {
 	return entry
 }
 
+browser_restore_location :: proc(b: ^Browser, location: History_Entry, fallback := 0) {
+	cursor := fallback
+	for source, i in b.visible {
+		if b.entries[source].name == location.selected_name {cursor = i; break}
+	}
+	selection_single(b, cursor)
+	b.first = clamp(location.first, 0, max(0, len(b.visible) - 1))
+}
+
 browser_navigate :: proc(b: ^Browser, path: string) -> os.Error {
 	if path == b.path {return nil}
 	previous := browser_location(b)
@@ -244,11 +253,7 @@ browser_history :: proc(b: ^Browser, backward: bool) -> os.Error {
 	pop(from)
 	defer history_entry_destroy(destination)
 	append(to, previous)
-	b.first = clamp(destination.first, 0, max(0, len(b.visible) - 1))
-	for source, i in b.visible {
-		if b.entries[source].name == destination.selected_name {b.selected = i; break}
-	}
-	selection_single(b, b.selected)
+	browser_restore_location(b, destination)
 	return nil
 }
 

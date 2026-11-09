@@ -11,7 +11,6 @@ selection_clear :: proc(b: ^Browser) {
 selection_mark :: proc(b: ^Browser, row: int, marked: bool) {
 	if row < 0 || row >= len(b.visible) {return}
 	source := b.visible[row]
-	if source < 0 || source >= len(b.entries) {return}
 	if b.marks[source] == marked {return}
 	if marked {
 		if b.marks == nil {b.marks = make(map[int]bool)}

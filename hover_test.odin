@@ -1,6 +1,7 @@
 package main
 
 
+import "core:os"
 import "core:testing"
 import clay "vendor/clay"
 import sdl "vendor:sdl3"
@@ -9,7 +10,8 @@ import sdl "vendor:sdl3"
 hover_tracks_pointer_without_changing_selection :: proc(t: ^testing.T) {
 	b: Browser
 	defer browser_destroy(&b)
-	resize(&b.visible, 1000)
+	b.entries = make([]os.File_Info, 1000)
+	resize(&b.visible, len(b.entries))
 	for &source, i in b.visible {source = i}
 	places_add(&b.places, {label = "root", path = "/", icon = .PlaceFilesystem})
 	g := geometry(960, 640, 1)

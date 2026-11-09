@@ -178,7 +178,9 @@ xdg_places_and_navigation :: proc(t: ^testing.T) {
 selection_keys_move_only_the_focused_pane :: proc(t: ^testing.T) {
 	b: Browser
 	defer browser_destroy(&b)
-	resize(&b.visible, 100)
+	b.entries = make([]os.File_Info, 100)
+	resize(&b.visible, len(b.entries))
+	for &source, i in b.visible {source = i}
 	resize(&b.places.entries, 100)
 	g := geometry(960, 640, 1)
 	running := true
@@ -218,4 +220,13 @@ selection_keys_move_only_the_focused_pane :: proc(t: ^testing.T) {
 			}
 		}
 	}
+	clear(&b.visible)
+	b.places.focused = false
+	empty := sdl.Event {
+		key = {type = .KEY_DOWN, key = sdl.K_END},
+	}
+	_ = handle_event(&b, &empty, g, &running)
+	testing.expect_value(t, b.selected, 0)
+	testing.expect_value(t, b.first, 0)
+	testing.expect_value(t, len(b.marks), 0)
 }
