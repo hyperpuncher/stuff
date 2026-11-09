@@ -23,6 +23,9 @@ Browser :: struct {
 	entries:         []os.File_Info,
 	visible:         [dynamic]int,
 	selected, first: int,
+	anchor:          int,
+	marks:           map[int]bool,
+	marked_bytes:    i64,
 	show_hidden:     bool,
 	visible_bytes:   i64,
 	sort_column:     Column,
@@ -38,6 +41,8 @@ Browser :: struct {
 	space:           Space_Info,
 	pending_disk:    ^Disk_Operation, // Borrowed until the worker returns its result.
 	drag:            Scroll_Drag,
+	menu:            Context_Menu,
+	pending_files:   ^File_Operation, // Borrowed until its result is applied.
 }
 
 browser_message :: proc(b: ^Browser, message: string) {
@@ -46,6 +51,7 @@ browser_message :: proc(b: ^Browser, message: string) {
 }
 
 browser_destroy :: proc(b: ^Browser) {
+	file_operation_stop(b.pending_files)
 	storage_destroy(b.storage)
 	b.storage, b.pending_disk = nil, nil
 	header_destroy(&b.header)
@@ -54,6 +60,7 @@ browser_destroy :: proc(b: ^Browser) {
 	file_open_destroy(b)
 	os.file_info_slice_delete(b.entries, context.allocator)
 	delete(b.visible)
+	delete(b.marks)
 	delete(b.path)
 	for entry in b.back {history_entry_destroy(entry)}
 	for entry in b.forward {history_entry_destroy(entry)}
@@ -69,6 +76,7 @@ browser_load :: proc(b: ^Browser, path: string) -> os.Error {
 		return read_err
 	}
 	if b.path != absolute {b.header.copied_until = 0; b.space = {}; b.drag = {}}
+	b.menu.active = false
 	os.file_info_slice_delete(b.entries, context.allocator)
 	delete(b.path)
 	b.path, b.entries = absolute, entries
@@ -87,7 +95,7 @@ browser_filter :: proc(b: ^Browser) {
 		if entry.type == .Regular {b.visible_bytes += max(0, entry.size)}
 	}
 	browser_sort(b)
-	b.selected = 0
+	selection_single(b, 0)
 	b.first = 0
 }
 
@@ -124,6 +132,7 @@ browser_sort :: proc(b: ^Browser) {
 	for source, i in b.visible {
 		if source == selected_source {b.selected = i; break}
 	}
+	b.anchor = b.selected
 }
 
 browser_set_sort :: proc(b: ^Browser, column: Column) {
@@ -158,7 +167,17 @@ browser_summary :: proc(b: ^Browser) -> string {
 		format_size(b.visible_bytes),
 	)
 	if len(b.visible) == 0 {return total}
-	entry := b.entries[b.visible[b.selected]]
+	if len(b.marks) != 1 {
+		return fmt.tprintf(
+			"%s  |  selected: %d items (%s)",
+			total,
+			len(b.marks),
+			format_size(b.marked_bytes),
+		)
+	}
+	source := 0
+	for index in b.marks {source = index}
+	entry := b.entries[source]
 	detail := "special file"
 	#partial switch entry.type {
 	case .Regular:
@@ -229,6 +248,7 @@ browser_history :: proc(b: ^Browser, backward: bool) -> os.Error {
 	for source, i in b.visible {
 		if b.entries[source].name == destination.selected_name {b.selected = i; break}
 	}
+	selection_single(b, b.selected)
 	return nil
 }
 

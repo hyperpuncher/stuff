@@ -105,6 +105,8 @@ place_open :: proc(b: ^Browser, index: int, unmount := false) -> os.Error {
 
 storage_apply :: proc(b: ^Browser, result: Storage_Result) -> bool {
 	switch result.kind {
+	case .Files:
+		return file_operation_apply(b, result.files)
 	case .Space:
 		if result.path != b.path || result.space == b.space {return false}
 		b.space = result.space

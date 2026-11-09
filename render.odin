@@ -183,11 +183,14 @@ entry_icon :: proc(entry: os.File_Info) -> Icon {
 }
 
 Painter :: struct {
-	renderer: ^sdl.Renderer,
-	engine:   ^ttf.TextEngine,
-	font:     ^ttf.Font,
-	slots:    [dynamic]^ttf.Text,
-	icons:    [Icon]^sdl.Texture,
+	renderer:          ^sdl.Renderer,
+	engine:            ^ttf.TextEngine,
+	font:              ^ttf.Font,
+	slots:             [dynamic]^ttf.Text,
+	icons:             [Icon]^sdl.Texture,
+	menu_shadow:       ^sdl.Texture,
+	menu_shadow_size:  [2]i32,
+	menu_shadow_scale: f32,
 }
 
 // The returned path is owned. No font data is copied into the executable.
@@ -248,6 +251,7 @@ painter_load_icons :: proc(p: ^Painter, scale: f32) {
 }
 
 painter_destroy :: proc(p: ^Painter) {
+	if p.menu_shadow != nil {sdl.DestroyTexture(p.menu_shadow)}
 	for icon in p.icons {
 		if icon != nil {sdl.DestroyTexture(icon)}
 	}
@@ -463,12 +467,19 @@ paint :: proc(p: ^Painter, commands: clay.ClayArray(clay.RenderCommand), width, 
 		#partial switch cmd.commandType {
 		case .Rectangle:
 			data := cmd.renderData.rectangle
+			translucent := data.backgroundColor[3] < 255
+			previous: sdl.BlendMode
+			if translucent {
+				sdl_check(sdl.GetRenderDrawBlendMode(p.renderer, &previous))
+				sdl_check(sdl.SetRenderDrawBlendMode(p.renderer, sdl.BLENDMODE_BLEND))
+			}
 			radius := data.cornerRadius
 			if radius.topLeft > 0 ||
 			   radius.topRight > 0 ||
 			   radius.bottomLeft > 0 ||
 			   radius.bottomRight > 0 {
 				paint_rounded_rectangle(p.renderer, b, data)
+				if translucent {sdl_check(sdl.SetRenderDrawBlendMode(p.renderer, previous))}
 				continue
 			}
 			color := data.backgroundColor
@@ -483,6 +494,7 @@ paint :: proc(p: ^Painter, commands: clay.ClayArray(clay.RenderCommand), width, 
 			)
 			r := sdl.FRect{b.x, b.y, b.width, b.height}
 			sdl_check(sdl.RenderFillRect(p.renderer, &r))
+			if translucent {sdl_check(sdl.SetRenderDrawBlendMode(p.renderer, previous))}
 		case .Image:
 			r := sdl.FRect{math.round(b.x), math.round(b.y), b.width, b.height}
 			sdl_check(

@@ -9,6 +9,8 @@ lightweight file manager for linux
 - volume usage bars and automatic free-space updates
 - mount on open; unmount with the disk button or `ctrl+e` in the sidebar
 - sortable name, size, and modified columns
+- multiselect, background copy and paste, and move to trash
+- right-click menu and GNOME/KDE file clipboard formats
 - clickable path breadcrumbs and a copy-path button
 - open files with their default system application
 - system monospace font and neutral lucide icons
@@ -29,4 +31,10 @@ just run
 just test
 ```
 
-> work in progress. copy, move, rename, delete, and search are not implemented yet.
+## file actions
+
+use `ctrl+click` to toggle items, `shift+click` or `shift+up/down` to select a range, and `ctrl+a` to select all shown items.
+
+copy with `ctrl+c` or `ctrl+insert`. paste with `ctrl+v` or `shift+insert`. existing items are kept; copies get a new name when needed. symbolic links are copied as links.
+
+`delete` moves selected items to trash. if trash is unavailable, the items stay in place. permanent delete, cut/move, rename, and search are not implemented yet.

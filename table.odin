@@ -151,7 +151,7 @@ table_row :: proc(b: ^Browser, index: int, g: Geometry, p: ^Painter) {
 	source := b.visible[index]
 	entry := b.entries[source]
 	color: clay.Color
-	if index == b.selected {
+	if b.marks[source] {
 		color = theme.selected
 		if b.places.focused {color = theme.inactive_selection}
 	}
@@ -268,6 +268,10 @@ layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.Ren
 				verb := b.pending_disk.unmount ? "unmounting" : "mounting"
 				summary = fmt.tprintf("%s %s…", verb, b.pending_disk.device)
 			}
+			if b.pending_files != nil {
+				verb := b.pending_files.kind == .Copy ? "copying" : "moving to trash:"
+				summary = fmt.tprintf("%s %d items…", verb, len(b.pending_files.sources))
+			}
 			if b.status_error != "" {summary, color = b.status_error, theme.text}
 			free_space := ""
 			width := g.width - 2 * g.padding
@@ -281,5 +285,6 @@ layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.Ren
 			if free_space != "" {label(free_space, theme.muted, g.scale)}
 		}
 	}
+	menu_layout(b, g, p)
 	return clay.EndLayout(0)
 }

@@ -14,11 +14,13 @@ Storage_Result :: struct {
 		Disks,
 		Space,
 		Operation,
+		Files,
 	},
 	disks:       [dynamic]Disk,
 	path, error: string,
 	space:       Space_Info,
 	op:          ^Disk_Operation,
+	files:       ^File_Operation,
 }
 
 // Requests and results are owned. The mutex protects only shared queue/state
@@ -40,6 +42,7 @@ storage_result_destroy :: proc(result: Storage_Result) {
 	delete(result.path)
 	delete(result.error)
 	disk_operation_destroy(result.op)
+	file_operation_destroy(result.files)
 }
 
 storage_wake :: proc(s: ^Storage) {

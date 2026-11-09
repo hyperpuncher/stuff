@@ -192,6 +192,7 @@ large_directory_layout :: proc(t: ^testing.T) {
 	verify_theme_switch(t, &p)
 	verify_rounded_pixels(t, renderer)
 	verify_header_actions(t, &p)
+	verify_context_menu_rendering(t, &p)
 
 	b: Browser
 	defer browser_destroy(&b)
@@ -207,7 +208,7 @@ large_directory_layout :: proc(t: ^testing.T) {
 	g := geometry(960, 640, 1)
 	selections := [?]int{0, 50_000, 99_999}
 	for selected in selections {
-		b.selected = selected
+		selection_single(&b, selected)
 		browser_reveal(&b, g.rows)
 		commands := layout(&b, g, &p)
 		testing.expect(t, int(commands.length) <= 6 * g.rows + 30)

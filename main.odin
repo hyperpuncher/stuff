@@ -14,11 +14,13 @@ handle_event :: proc(b: ^Browser, event: ^sdl.Event, g: Geometry, running: ^bool
 	pointer_changed := false
 	#partial switch event.type {
 	case .MOUSE_MOTION:
+		menu_changed := b.menu.active && b.menu.selected >= 0
+		if b.menu.active {b.menu.selected = -1}
 		changed := pointer_move(b, g, event.motion.x, event.motion.y)
-		return scrollbar_motion(b, g, event.motion.y) || changed
+		return scrollbar_motion(b, g, event.motion.y) || changed || menu_changed
 	case .WINDOW_MOUSE_LEAVE, .WINDOW_FOCUS_LOST:
-		cancelled := event.type == .WINDOW_FOCUS_LOST && b.drag.active
-		if cancelled {b.drag = {}}
+		cancelled := event.type == .WINDOW_FOCUS_LOST && (b.drag.active || b.menu.active)
+		if cancelled {b.drag = {}; b.menu.active = false}
 		b.pointer.active = false
 		return hover_update(b, g) || cancelled
 	case .KEY_DOWN:
@@ -66,6 +68,7 @@ handle_input :: proc(
 	changed: bool,
 	err: os.Error,
 ) {
+	if menu_input(b, event, g) {return true, nil}
 	#partial switch event.type {
 	case .QUIT, .WINDOW_CLOSE_REQUESTED:
 		running^ = false
@@ -79,6 +82,24 @@ handle_input :: proc(
 	case .WINDOW_EXPOSED, .WINDOW_PIXEL_SIZE_CHANGED, .WINDOW_DISPLAY_SCALE_CHANGED:
 		return true, nil
 	case .KEY_DOWN:
+		ctrl := event.key.mod & sdl.KMOD_CTRL != {}
+		shift := event.key.mod & sdl.KMOD_SHIFT != {}
+		if !b.places.focused {
+			key := event.key.key
+			copy := ctrl && (key == sdl.K_C || key == sdl.K_INSERT && !shift)
+			paste := ctrl && key == sdl.K_V || shift && !ctrl && key == sdl.K_INSERT
+			all := ctrl && key == sdl.K_A
+			trash := key == sdl.K_DELETE
+			if copy || paste || all || trash {
+				if event.key.repeat {return false, nil}
+				if copy {file_clipboard_copy(b)}
+				if paste {file_operation_start(b, false)}
+				if all {selection_all(b)}
+				if trash {file_operation_start(b, true)}
+				return true, nil
+			}
+			if key == sdl.K_ESCAPE {selection_clear(b); return true, nil}
+		}
 		if event.key.repeat &&
 		   (event.key.key == sdl.K_TAB ||
 				   event.key.key == sdl.K_RETURN ||
@@ -101,6 +122,9 @@ handle_input :: proc(
 			rows = places_geometry(g).rows
 		}
 		if selection_key(event.key.key, selected, first, count, rows) {
+			if !b.places.focused {
+				if shift {selection_extend(b, b.selected, ctrl)} else if ctrl {b.anchor = b.selected} else {selection_single(b, b.selected)}
+			}
 			if b.places.focused && count > 0 && b.places.entries[selected^].section {
 				backward :=
 					event.key.key == sdl.K_UP ||
@@ -163,6 +187,8 @@ handle_input :: proc(
 			return true, browser_history(b, true)
 		case sdl.BUTTON_X2:
 			return true, browser_history(b, false)
+		case sdl.BUTTON_RIGHT:
+			return menu_open(b, g, event.button.x, event.button.y), nil
 		case sdl.BUTTON_LEFT:
 		case:
 			return false, nil
@@ -192,8 +218,10 @@ handle_input :: proc(
 		index := row_at(g, y, b.first, len(b.visible))
 		if index < 0 {return false, nil}
 		b.places.focused = false
-		b.selected = index
-		if event.button.clicks == 2 {err = browser_enter(b)}
+		mods := sdl.GetModState()
+		selection_click(b, index, mods & sdl.KMOD_CTRL != {}, mods & sdl.KMOD_SHIFT != {})
+		if event.button.clicks == 2 &&
+		   mods & (sdl.KMOD_CTRL | sdl.KMOD_SHIFT) == {} {err = browser_enter(b)}
 		return true, err
 	case:
 		return false, nil
@@ -222,9 +250,7 @@ run :: proc() -> int {
 	for arg in os.args[1:] {
 		if arg == "--smoke" {smoke = true; continue}
 		if arg == "--help" {
-			fmt.println(
-				"usage: stuff [folder] [--smoke]\nuses the system monospace font. this version is read-only.",
-			)
+			fmt.println("usage: stuff [folder] [--smoke]\nuses the system monospace font.")
 			return 0
 		}
 		path = arg
