@@ -1,0 +1,256 @@
+package main
+
+import "core:fmt"
+import "core:time"
+import clay "vendor/clay"
+import sdl "vendor:sdl3"
+
+SIDEBAR_WIDTH :: 192
+MIN_WINDOW_WIDTH :: SIDEBAR_WIDTH + 480
+MIN_WINDOW_HEIGHT :: 240
+
+Geometry :: struct {
+	width, height, scale, header, footer, row, list_top: f32,
+	padding, gap, sidebar, list_padding:                 f32,
+	columns:                                             [Column]f32,
+	rows:                                                int,
+}
+
+geometry :: proc(width, height: i32, scale: f32) -> Geometry {
+	g := Geometry {
+		width        = f32(width),
+		height       = f32(height),
+		scale        = scale,
+		header       = 36 * scale,
+		footer       = 40 * scale,
+		row          = 32 * scale,
+		padding      = 16 * scale,
+		gap          = 24 * scale,
+		sidebar      = SIDEBAR_WIDTH * scale,
+		list_padding = 4 * scale,
+	}
+	g.list_top = g.header + g.row + g.list_padding
+	g.columns[.Size] = 112 * scale
+	g.columns[.Modified] = 184 * scale
+	g.columns[.Name] = max(
+		0,
+		g.width - g.sidebar - 2 * g.padding - 2 * g.gap - g.columns[.Size] - g.columns[.Modified],
+	)
+	g.rows = max(1, int((g.height - g.list_top - g.footer - g.list_padding) / g.row))
+	return g
+}
+
+list_layout :: proc(g: Geometry) -> clay.LayoutConfig {
+	return {
+		sizing = {clay.SizingGrow(), clay.SizingGrow()},
+		padding = {top = u16(g.list_padding), bottom = u16(g.list_padding)},
+		layoutDirection = .TopToBottom,
+	}
+}
+
+column_at :: proc(g: Geometry, x: f32) -> (Column, bool) {
+	left := g.sidebar + g.padding
+	for width, column in g.columns {
+		if x >= left && x < left + width {return column, true}
+		left += width + g.gap
+	}
+	return .Name, false
+}
+
+row_at :: proc(g: Geometry, y: f32, first, count: int) -> int {
+	if y < g.list_top || y >= g.list_top + f32(g.rows) * g.row {return -1}
+	index := first + int((y - g.list_top) / g.row)
+	return index < count ? index : -1
+}
+
+row_layout :: proc(g: Geometry) -> clay.LayoutConfig {
+	return {
+		sizing = {clay.SizingGrow(), clay.SizingFixed(g.row)},
+		padding = {left = u16(g.padding), right = u16(g.padding)},
+		childGap = u16(g.gap),
+		childAlignment = {y = .Center},
+	}
+}
+
+column_layout :: proc(g: Geometry, column: Column) -> clay.LayoutConfig {
+	align: clay.LayoutAlignmentX = .Left
+	if column == .Size {align = .Right}
+	return {
+		sizing = {clay.SizingFixed(g.columns[column]), clay.SizingGrow()},
+		childGap = u16(12 * g.scale),
+		childAlignment = {x = align, y = .Center},
+	}
+}
+
+label :: proc(value: string, color: clay.Color, scale: f32) {
+	clay.Text(value, {textColor = color, fontSize = u16(16 * scale), wrapMode = .None})
+}
+
+icon_element :: proc(p: ^Painter, kind: Icon, scale: f32) {
+	if clay.UI()(
+	{
+		layout = {sizing = {clay.SizingFixed(18 * scale), clay.SizingFixed(18 * scale)}},
+		image = {imageData = p.icons[kind]},
+	},
+	) {}
+}
+
+format_modified :: proc(stamp: time.Time) -> string {
+	date: sdl.DateTime
+	if !sdl.TimeToDateTime(sdl.Time(time.to_unix_nanoseconds(stamp)), &date, true) {return "—"}
+	return fmt.tprintf(
+		"%02d.%02d.%04d %02d:%02d",
+		date.day,
+		date.month,
+		date.year,
+		date.hour,
+		date.minute,
+	)
+}
+
+table_header :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
+	if clay.UI()({layout = row_layout(g), backgroundColor = theme.panel}) {
+		names := [Column]string {
+			.Name     = "name",
+			.Size     = "size",
+			.Modified = "modified",
+		}
+		for name, column in names {
+			id := clay.ID("column", u32(column))
+			if clay.UI(id)({layout = column_layout(g, column)}) {
+				if column == .Name {
+					// Align the heading with filenames, after the file icon.
+					if clay.UI()({layout = {sizing = {width = clay.SizingFixed(18 * g.scale)}}}) {}
+				}
+				color := theme.muted
+				if column == b.sort_column || b.hovered == id.id {color = theme.text}
+				label(name, color, g.scale)
+				if column == b.sort_column {
+					kind: Icon = .SortAscending
+					if b.descending {kind = .SortDescending}
+					icon_element(p, kind, g.scale)
+				}
+			}
+		}
+	}
+}
+
+table_row :: proc(b: ^Browser, index: int, g: Geometry, p: ^Painter) {
+	source := b.visible[index]
+	entry := b.entries[source]
+	color: clay.Color
+	if index == b.selected {
+		color = theme.selected
+		if b.places.focused {color = theme.inactive_selection}
+	}
+	color = hover_color(b, clay.ID("row", u32(source)), color)
+	inset := u16(6 * g.scale)
+	inner := row_layout(g)
+	inner.sizing.height = clay.SizingGrow()
+	inner.padding.left -= inset
+	inner.padding.right -= inset
+	if clay.UI(clay.ID("row", u32(source)))(
+	{
+		layout = {
+			sizing = {clay.SizingGrow(), clay.SizingFixed(g.row)},
+			padding = {
+				left = inset,
+				right = inset,
+				top = u16(2 * g.scale),
+				bottom = u16(2 * g.scale),
+			},
+		},
+	},
+	) {
+		if clay.UI()(
+		{
+			layout = inner,
+			backgroundColor = color,
+			cornerRadius = clay.CornerRadiusAll(6 * g.scale),
+		},
+		) {
+			if clay.UI()({layout = column_layout(g, .Name)}) {
+				icon_element(p, entry_icon(entry), g.scale)
+				label(
+					fit_label(p.font, entry.name, g.columns[.Name] - 30 * g.scale, middle = true),
+					theme.text,
+					g.scale,
+				)
+			}
+			if clay.UI()({layout = column_layout(g, .Size)}) {
+				value := "—"
+				if entry.type == .Regular {value = format_size(entry.size)}
+				label(fit_label(p.font, value, g.columns[.Size]), theme.muted, g.scale)
+			}
+			if clay.UI()({layout = column_layout(g, .Modified)}) {
+				label(
+					fit_label(
+						p.font,
+						format_modified(entry.modification_time),
+						g.columns[.Modified],
+					),
+					theme.muted,
+					g.scale,
+				)
+			}
+		}
+	}
+}
+
+layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.RenderCommand) {
+	clay.SetLayoutDimensions({g.width, g.height})
+	clay.BeginLayout()
+	if clay.UI(clay.ID("window"))(
+	{
+		layout = {sizing = {clay.SizingGrow(), clay.SizingGrow()}, layoutDirection = .TopToBottom},
+		backgroundColor = theme.panel,
+		clip = {horizontal = true, vertical = true},
+	},
+	) {
+		header_layout(b, g, p)
+		if clay.UI()({layout = {sizing = {clay.SizingGrow(), clay.SizingGrow()}}}) {
+			places_layout(b, g, p)
+			if clay.UI()(
+			{
+				layout = {
+					sizing = {clay.SizingGrow(), clay.SizingGrow()},
+					layoutDirection = .TopToBottom,
+				},
+			},
+			) {
+				table_header(b, g, p)
+				if clay.UI()(
+				{
+					layout = list_layout(g),
+					backgroundColor = theme.background,
+					cornerRadius = {topLeft = 10 * g.scale, bottomLeft = 10 * g.scale},
+				},
+				) {
+					if len(b.visible) == 0 {
+						if clay.UI()({layout = {padding = clay.PaddingAll(u16(g.padding))}}) {
+							label("this folder is empty", theme.muted, g.scale)
+						}
+					}
+					for i in b.first ..< min(b.first + g.rows, len(b.visible)) {table_row(b, i, g, p)}
+				}
+			}
+		}
+		if clay.UI()(
+		{
+			layout = {
+				sizing = {clay.SizingGrow(), clay.SizingFixed(g.footer)},
+				padding = {left = u16(g.padding)},
+				childAlignment = {y = .Center},
+			},
+			backgroundColor = theme.panel,
+		},
+		) {
+			if b.status_error != "" {
+				label(b.status_error, theme.text, g.scale)
+			} else {
+				label(browser_summary(b), theme.muted, g.scale)
+			}
+		}
+	}
+	return clay.EndLayout(0)
+}
