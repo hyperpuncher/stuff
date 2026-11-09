@@ -65,12 +65,15 @@ trash_read_root :: proc(
 	parent_c := strings.clone_to_cstring(parent)
 	defer delete(parent_c)
 	fd, open_err := linux.open(parent_c, {.DIRECTORY, .NOFOLLOW, .CLOEXEC})
-	if open_err != .NONE {return open_err}
+	if open_err != .NONE {
+		if local && (open_err == .EACCES || open_err == .EPERM) {return .Unsupported}
+		return open_err
+	}
 	defer linux.close(fd)
 	if shared {
 		st: linux.Stat
 		if err := linux.fstat(fd, &st); err != .NONE {return err}
-		if transmute(u32)st.mode & 0o1000 == 0 {return linux.Errno.EACCES}
+		if transmute(u32)st.mode & 0o1000 == 0 {return .Unsupported}
 	}
 	name_c := strings.clone_to_cstring(name)
 	defer delete(name_c)
@@ -142,10 +145,12 @@ trash_view_read :: proc(op: ^File_Operation) {
 					variant == 0 ? fmt.tprintf("%s/.Trash/%d", strings.trim_suffix(top, "/"), linux.getuid()) : fmt.tprintf("%s/.Trash-%d", strings.trim_suffix(top, "/"), linux.getuid())
 			}
 			err = trash_read_root(op, root, top, i >= 0, i >= 0 && variant == 0, &seen)
-			if err != nil &&
-			   err != linux.Errno.ENOENT &&
-			   err != linux.Errno.ENOTDIR &&
-			   err != .Not_Exist {file_operation_failed(op, root, err)}
+			missing := err == linux.Errno.ENOENT || err == .Not_Exist
+			unusable := i >= 0 && (err == .Unsupported || err == linux.Errno.ENOTDIR)
+			if err != nil && !missing && !unusable {
+				op.failed += 1
+				if op.error == "" {op.error = fmt.aprintf("%s: %s", root, os.error_string(err))}
+			}
 			free_all(context.temp_allocator)
 		}
 	}

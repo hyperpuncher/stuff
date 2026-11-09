@@ -79,7 +79,7 @@ browser_destroy :: proc(b: ^Browser) {
 browser_load :: proc(b: ^Browser, path: string) -> os.Error {
 	if path == TRASH_PATH {
 		if !trash_view_request(b) {return .Unsupported}
-		if b.path == TRASH_PATH {return nil}
+		if b.path == TRASH_PATH {browser_message(b, ""); return nil}
 		os.file_info_slice_delete(b.entries, context.allocator)
 		trash_records_destroy(b.trash_records)
 		b.entries, b.trash_records = nil, nil

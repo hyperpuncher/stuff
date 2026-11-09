@@ -151,3 +151,27 @@ local_trash_view_uses_relative_metadata_without_creating_directories :: proc(t: 
 	testing.expect_value(t, b.entries[0].name, "file")
 	testing.expect_value(t, b.trash_records[b.entries[0].fullpath].path, source)
 }
+
+@(test)
+trash_scan_skips_protected_optional_mounts_but_reports_home_errors :: proc(t: ^testing.T) {
+	if linux.getuid() == 0 {return}
+	root, err := os.make_directory_temp("/tmp", "stuff-protected-trash-", context.allocator)
+	if err != nil {testing.fail_now(t, "cannot create protected mount fixture")}
+	defer delete(root)
+	defer os.remove_all(root)
+	defer os.chmod(root, os.perm(0o700))
+	op := new(File_Operation)
+	defer file_operation_destroy(op)
+	seen := make(map[[2]u64]bool)
+	defer delete(seen)
+	testing.expect(t, os.chmod(root, os.perm(0)) == nil)
+	path := fmt.aprintf("%s/.Trash-%d", root, linux.getuid())
+	defer delete(path)
+	testing.expect_value(
+		t,
+		trash_read_root(op, path, root, true, false, &seen),
+		os.Error(.Unsupported),
+	)
+	testing.expect(t, trash_read_root(op, path, root, false, false, &seen) != nil)
+	testing.expect_value(t, len(op.listed), 0)
+}
