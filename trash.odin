@@ -22,6 +22,10 @@ trash_home_path :: proc() -> string {
 trash_private_at :: proc(parent: linux.Fd, name: cstring) -> (fd: linux.Fd, err: os.Error) {
 	mkdir_err := linux.mkdirat(parent, name, transmute(linux.Mode)u32(0o700))
 	if mkdir_err != .NONE && mkdir_err != .EEXIST {return -1, mkdir_err}
+	return trash_private_open_at(parent, name)
+}
+
+trash_private_open_at :: proc(parent: linux.Fd, name: cstring) -> (fd: linux.Fd, err: os.Error) {
 	open_err: linux.Errno
 	fd, open_err = linux.openat(parent, name, {.DIRECTORY, .NOFOLLOW, .CLOEXEC})
 	if open_err != .NONE {return -1, open_err}

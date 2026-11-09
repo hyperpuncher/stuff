@@ -14,6 +14,9 @@ File_Operation :: struct {
 	history:                         File_History_Mode,
 	count:                           int, // Immutable after launch, including while history lists move.
 	changes, applied:                [dynamic]File_Change,
+	restores:                        [dynamic]File_Change,
+	listed:                          [dynamic]os.File_Info,
+	records:                         map[string]File_Change,
 	sources:                         [dynamic]string,
 	target, trash_home, destination: string,
 	storage:                         ^Storage,
@@ -37,6 +40,10 @@ file_operation_destroy :: proc(op: ^File_Operation) {
 	file_paths_destroy(op.sources)
 	file_changes_destroy(op.changes)
 	file_changes_destroy(op.applied)
+	file_changes_destroy(op.restores)
+	for info in op.listed {os.file_info_delete(info, context.allocator)}
+	delete(op.listed)
+	trash_records_destroy(op.records)
 	delete(op.target)
 	delete(op.destination)
 	delete(op.trash_home)
@@ -45,7 +52,7 @@ file_operation_destroy :: proc(op: ^File_Operation) {
 }
 
 file_operation_start :: proc(b: ^Browser, trash: bool) {
-	if b.pending_files != nil {return}
+	if b.pending_files != nil || b.path == TRASH_PATH {return}
 	if b.storage == nil {browser_message(b, "file operations are unavailable"); return}
 	paths := trash ? selection_paths(b) : file_clipboard_read(b)
 	if len(paths) == 0 {file_paths_destroy(paths); return}
@@ -75,6 +82,7 @@ file_operation_failed :: proc(op: ^File_Operation, path: string, err: os.Error) 
 }
 
 file_operation_run :: proc(op: ^File_Operation) {
+	if op.kind == .List_Trash {trash_view_read(op); return}
 	if op.history != .Record {file_history_run(op); return}
 	buffer: []u8
 	if op.kind == .Copy {buffer = make([]u8, 1024 * 1024)}
@@ -82,9 +90,18 @@ file_operation_run :: proc(op: ^File_Operation) {
 	mounts: [dynamic]Mount
 	if op.kind == .Trash {mounts, _ = mounts_read()}
 	defer mounts_destroy(mounts)
-	for source in op.sources {
+	for source, index in op.sources {
 		if sync.atomic_load(&op.cancel) {break}
 		err: os.Error
+		if op.kind == .Restore {
+			record := op.restores[index]
+			err = file_change_check(record, source)
+			if err == nil {err = trash_restore(record)}
+			if err ==
+			   nil {append(&op.changes, File_Change{path = strings.clone(record.path), device = record.device, inode = record.inode})}
+			if err != nil {file_operation_failed(op, record.path, err)}
+			continue
+		}
 		if op.kind ==
 		   .Copy {err = file_copy(op, source, buffer)} else if op.kind == .Rename || op.kind == .New_Folder {
 			if op.kind ==
@@ -116,6 +133,7 @@ file_operation_worker :: proc(data: rawptr) {
 }
 
 file_operation_apply :: proc(b: ^Browser, op: ^File_Operation) -> bool {
+	if op.kind == .List_Trash {return trash_view_apply(b, op)}
 	if b.pending_files != op {return false}
 	b.pending_files = nil
 	renamed_target := ""
@@ -127,9 +145,17 @@ file_operation_apply :: proc(b: ^Browser, op: ^File_Operation) -> bool {
 			if b.entries[b.visible[b.selected]].fullpath == from {renamed_target = to; break}
 		}
 	}
+	refresh := b.path == op.target
+	for changes in ([?][dynamic]File_Change{op.changes, op.applied}) {
+		for change in changes {
+			parent, _ := os.split_path(change.path)
+			if strings.trim_suffix(parent, "/") ==
+			   strings.trim_suffix(b.path, "/") {refresh = true}
+		}
+	}
 	file_history_apply(b, op)
 	// Refresh only the affected folder. Completion must not change navigation.
-	if b.path == op.target {
+	if b.path == TRASH_PATH {_ = trash_view_request(b)} else if refresh {
 		location := browser_location(b)
 		selected_target := renamed_target
 		if op.failed == 0 && b.header.edit.waiting == op {selected_target = op.destination}
@@ -146,7 +172,7 @@ file_operation_apply :: proc(b: ^Browser, op: ^File_Operation) -> bool {
 	}
 	if op.failed > 0 {
 		verb :=
-			op.kind == .Copy ? "copy" : op.kind == .Rename ? "rename" : op.kind == .New_Folder ? "create folder" : "move to trash"
+			op.kind == .Copy ? "copy" : op.kind == .Rename ? "rename" : op.kind == .New_Folder ? "create folder" : op.kind == .Restore ? "restore" : "move to trash"
 		if op.history != .Record {verb = op.history == .Undo ? "undo" : "redo"}
 		browser_message(
 			b,

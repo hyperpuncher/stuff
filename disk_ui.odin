@@ -6,6 +6,7 @@ import "core:strings"
 import clay "vendor/clay"
 
 path_contains :: proc(parent, path: string) -> bool {
+	if path == TRASH_PATH {return parent == TRASH_PATH}
 	return(
 		parent != "" &&
 		(path == parent ||

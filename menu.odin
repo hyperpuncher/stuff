@@ -9,6 +9,7 @@ Menu_Action :: enum {
 	Paste,
 	Rename,
 	New_Folder,
+	Restore,
 	Trash,
 	Select_All,
 }
@@ -19,7 +20,9 @@ Context_Menu :: struct {
 }
 
 menu_visible :: proc(b: ^Browser, action: Menu_Action) -> bool {
-	if action == .Paste {return b.menu.paste}
+	if action == .Restore {return b.path == TRASH_PATH}
+	if action == .Trash {return b.path != TRASH_PATH}
+	if action == .Paste {return b.menu.paste && b.path != TRASH_PATH}
 	if action == .Rename {return len(b.marks) == 1 && b.path != TRASH_PATH}
 	if action == .New_Folder {return len(b.marks) == 0 && b.path != TRASH_PATH}
 	return true
@@ -48,7 +51,7 @@ menu_enabled :: proc(b: ^Browser, action: Menu_Action) -> bool {
 		return len(b.marks) > 0
 	case .Paste:
 		return b.menu.paste && b.pending_files == nil
-	case .Trash:
+	case .Trash, .Restore:
 		return len(b.marks) > 0 && b.pending_files == nil
 	case .Select_All:
 		return len(b.visible) > 0
@@ -99,6 +102,8 @@ menu_execute :: proc(b: ^Browser, action: Menu_Action) {
 		file_operation_start(b, false)
 	case .Rename, .New_Folder:
 		file_dialog_start(b, action == .Rename)
+	case .Restore:
+		file_restore_start(b)
 	case .Trash:
 		file_operation_start(b, true)
 	case .Select_All:
@@ -189,6 +194,7 @@ menu_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 		.Rename     = "rename",
 		.New_Folder = "new folder",
 		.Trash      = "move to trash",
+		.Restore    = "restore",
 		.Select_All = "select all",
 	}
 	// Keep measured geometry available for input before the popup's first frame.
@@ -199,6 +205,7 @@ menu_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 		.Rename     = .Rename,
 		.New_Folder = .NewFolder,
 		.Trash      = .Trash,
+		.Restore    = .Restore,
 		.Select_All = .SelectAll,
 	}
 	if !b.menu.active {return}

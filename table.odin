@@ -248,7 +248,11 @@ layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.Ren
 					if clay.UI(clay.ID("files-viewport"))(viewport_config()) {
 						if len(b.visible) == 0 {
 							if clay.UI()({layout = {padding = clay.PaddingAll(u16(g.padding))}}) {
-								label("this folder is empty", theme.muted, g.font_size)
+								label(
+									b.path == TRASH_PATH ? (b.pending_trash != nil ? "loading trash…" : "trash is empty") : "this folder is empty",
+									theme.muted,
+									g.font_size,
+								)
 							}
 						}
 						for i in b.first ..< min(b.first + g.rows + 1, len(b.visible)) {table_row(b, i, g, p)}
@@ -270,6 +274,7 @@ layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.Ren
 		},
 		) {
 			summary, color := browser_summary(b), theme.muted
+			if b.path == TRASH_PATH && b.pending_trash != nil {summary = "loading trash…"}
 			if b.pending_disk != nil {
 				verb := b.pending_disk.unmount ? "unmounting" : "mounting"
 				summary = fmt.tprintf("%s %s…", verb, b.pending_disk.device)
@@ -277,7 +282,7 @@ layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.Ren
 			if b.pending_files != nil {
 				op := b.pending_files
 				verb :=
-					op.kind == .Copy ? "copying" : op.kind == .Rename ? "renaming" : op.kind == .New_Folder ? "creating" : "moving to trash:"
+					op.kind == .Copy ? "copying" : op.kind == .Rename ? "renaming" : op.kind == .New_Folder ? "creating" : op.kind == .Restore ? "restoring" : "moving to trash:"
 				if op.history != .Record {verb = op.history == .Undo ? "undoing" : "redoing"}
 				summary = fmt.tprintf("%s %d items…", verb, op.count)
 			}

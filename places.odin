@@ -22,6 +22,17 @@ Places :: struct {
 
 places_add :: proc(p: ^Places, place: Place) {
 	if place.path == "" {return}
+	if place.path == TRASH_PATH {
+		append(
+			&p.entries,
+			Place {
+				label = strings.clone(place.label),
+				path = strings.clone(TRASH_PATH),
+				icon = .Trash,
+			},
+		)
+		return
+	}
 	path, err := os.get_absolute_path(place.path, context.allocator)
 	if err != nil {return}
 	if !os.is_dir(path) {delete(path); return}
@@ -52,6 +63,7 @@ places_init :: proc(p: ^Places) {
 		if path !=
 		   nil {places_add(p, {label = folder.label, path = string(path), icon = folder.icon})}
 	}
+	places_add(p, {label = "trash", path = TRASH_PATH, icon = .Trash})
 	append(&p.entries, Place{section = true})
 	places_add(p, {label = "filesystem", path = "/", icon = .PlaceFilesystem, disk = true})
 }

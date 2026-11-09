@@ -68,7 +68,7 @@ header_hit :: proc(id: clay.ElementId, x, y: f32) -> bool {
 }
 
 header_target :: proc(h: ^Header, x, y: f32) -> u32 {
-	if h.edit.active || h.path == "" {return 0}
+	if h.edit.active || h.path == "" || h.path == TRASH_PATH {return 0}
 	if header_hit(clay.ID("copy_path"), x, y) {return clay.ID("copy_path").id}
 	if !header_hit(clay.ID("breadcrumbs"), x, y) {return 0}
 	for _, i in h.crumbs {
@@ -97,6 +97,18 @@ header_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 	h.edit.font = p.font
 	if h.edit.active && h.edit.mode == .Path {path_edit_layout(b, g, p); return}
 	header_sync(h, b.path)
+	if b.path == TRASH_PATH {
+		if clay.UI()(
+		{
+			layout = {
+				sizing = {clay.SizingGrow(), clay.SizingFixed(g.header)},
+				padding = {left = u16(16 * g.scale)},
+				childAlignment = {y = .Center},
+			},
+		},
+		) {label("trash", theme.text, g.font_size)}
+		return
+	}
 	available := g.width - 2 * f32(u16(12 * g.scale)) - f32(u16(8 * g.scale)) - 28 * g.scale
 	labels := make([]string, len(h.crumbs), context.temp_allocator)
 	content_width := f32(max(0, len(h.crumbs) - 1)) * (18 * g.scale + 2 * f32(u16(2 * g.scale)))

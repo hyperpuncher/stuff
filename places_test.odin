@@ -62,7 +62,7 @@ xdg_places_and_navigation :: proc(t: ^testing.T) {
 	testing.expect(t, browser_load(&b, home) == nil)
 	places_init(&b.places)
 	// Duplicate paths, disabled folders, and missing directories add no dead entries.
-	labels := [?]string{"home", "desktop", "documents", "downloads", "", "filesystem"}
+	labels := [?]string{"home", "desktop", "documents", "downloads", "trash", "", "filesystem"}
 	testing.expect_value(t, len(b.places.entries), len(labels))
 	if len(b.places.entries) != len(labels) {return}
 	for label, i in labels {testing.expect_value(t, b.places.entries[i].label, label)}
@@ -70,9 +70,9 @@ xdg_places_and_navigation :: proc(t: ^testing.T) {
 	testing.expect_value(t, b.places.entries[1].path, desktop)
 	testing.expect_value(t, b.places.entries[2].path, documents)
 	testing.expect_value(t, b.places.entries[3].path, downloads)
-	testing.expect_value(t, b.places.entries[5].path, "/")
+	testing.expect_value(t, b.places.entries[6].path, "/")
 	testing.expect_value(t, places_active(&b.places, fmt.tprintf("%s/child", desktop)), 1)
-	testing.expect_value(t, places_active(&b.places, fmt.tprintf("%s-other", home)), 5)
+	testing.expect_value(t, places_active(&b.places, fmt.tprintf("%s-other", home)), 6)
 
 	g := geometry(960, 640, 1)
 	b.selected = 1
@@ -145,11 +145,11 @@ xdg_places_and_navigation :: proc(t: ^testing.T) {
 		wheel = {type = .MOUSE_WHEEL, y = -1, mouse_x = 20, mouse_y = g.list_top + 1},
 	}
 	testing.expect(t, handle_event(&b, &event, g, &running))
-	testing.expect_value(t, b.places.first, 1)
+	testing.expect_value(t, b.places.first, 2)
 	testing.expect_value(t, b.first, 0)
 	event.wheel.mouse_x = g.sidebar + 20
 	testing.expect(t, handle_event(&b, &event, g, &running))
-	testing.expect_value(t, b.places.first, 1)
+	testing.expect_value(t, b.places.first, 2)
 	testing.expect_value(t, b.first, 3)
 
 	g = geometry(960, 640, 1)

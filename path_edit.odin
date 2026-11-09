@@ -242,13 +242,15 @@ path_edit_input :: proc(
 			if edit.mode != .Path {file_dialog_submit(b); return true, nil}
 			if edit.value == "" {browser_message(b, "enter a folder path"); return true, nil}
 			target := edit.value
+			if target ==
+			   TRASH_PATH {err = browser_navigate(b, target); if err == nil {path_edit_end(edit)}; return true, err}
 			if target == "~" || strings.has_prefix(target, "~/") {
 				home := sdl.GetUserFolder(.HOME)
 				if home != nil {target = fmt.tprintf("%s%s", string(home), target[1:])}
-			} else if !strings.has_prefix(
-				target,
-				"/",
-			) {target = fmt.tprintf("%s/%s", b.path, target)}
+			} else if !strings.has_prefix(target, "/") {base := b.path
+				if base ==
+				   TRASH_PATH {home := sdl.GetUserFolder(.HOME); if home != nil {base = string(home)}}
+				target = fmt.tprintf("%s/%s", base, target)}
 			err = browser_navigate(b, target)
 			if err == nil {path_edit_end(edit)}
 			return true, err

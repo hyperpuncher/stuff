@@ -44,6 +44,9 @@ Browser :: struct {
 	menu:                   Context_Menu,
 	pending_files:          ^File_Operation, // Borrowed until its result is applied.
 	undo_files, redo_files: [dynamic]File_Batch,
+	pending_trash:          ^File_Operation,
+	trash_requested:        bool,
+	trash_records:          map[string]File_Change,
 }
 
 browser_message :: proc(b: ^Browser, message: string) {
@@ -53,6 +56,7 @@ browser_message :: proc(b: ^Browser, message: string) {
 
 browser_destroy :: proc(b: ^Browser) {
 	file_operation_stop(b.pending_files)
+	file_operation_stop(b.pending_trash)
 	storage_destroy(b.storage)
 	b.storage, b.pending_disk = nil, nil
 	header_destroy(&b.header)
@@ -62,6 +66,7 @@ browser_destroy :: proc(b: ^Browser) {
 	places_destroy(&b.places)
 	file_open_destroy(b)
 	os.file_info_slice_delete(b.entries, context.allocator)
+	trash_records_destroy(b.trash_records)
 	delete(b.visible)
 	delete(b.marks)
 	delete(b.path)
@@ -72,6 +77,20 @@ browser_destroy :: proc(b: ^Browser) {
 }
 
 browser_load :: proc(b: ^Browser, path: string) -> os.Error {
+	if path == TRASH_PATH {
+		if !trash_view_request(b) {return .Unsupported}
+		if b.path == TRASH_PATH {return nil}
+		os.file_info_slice_delete(b.entries, context.allocator)
+		trash_records_destroy(b.trash_records)
+		b.entries, b.trash_records = nil, nil
+		delete(b.path)
+		b.path, b.space, b.drag = strings.clone(TRASH_PATH), {}, {}
+		b.menu.active = false
+		browser_filter(b)
+		browser_message(b, "")
+		storage_path(b.storage, "")
+		return nil
+	}
 	absolute := os.get_absolute_path(path, context.allocator) or_return
 	entries, read_err := os.read_all_directory_by_path(absolute, context.allocator)
 	if read_err != nil {
@@ -82,6 +101,8 @@ browser_load :: proc(b: ^Browser, path: string) -> os.Error {
 	b.menu.active = false
 	os.file_info_slice_delete(b.entries, context.allocator)
 	delete(b.path)
+	trash_records_destroy(b.trash_records)
+	b.trash_records = nil
 	b.path, b.entries = absolute, entries
 	browser_message(b, "")
 	browser_filter(b)
@@ -93,7 +114,7 @@ browser_filter :: proc(b: ^Browser) {
 	clear(&b.visible)
 	b.visible_bytes = 0
 	for entry, i in b.entries {
-		if !b.show_hidden && strings.has_prefix(entry.name, ".") {continue}
+		if b.path != TRASH_PATH && !b.show_hidden && strings.has_prefix(entry.name, ".") {continue}
 		append(&b.visible, i)
 		if entry.type == .Regular {b.visible_bytes += max(0, entry.size)}
 	}
@@ -190,6 +211,11 @@ browser_summary :: proc(b: ^Browser) -> string {
 	case .Symlink:
 		detail = "symbolic link"
 	}
+	if b.path == TRASH_PATH {
+		record := b.trash_records[entry.fullpath]
+		parent, _ := os.split_path(record.path)
+		detail = fmt.tprintf("from %s", parent)
+	}
 	return fmt.tprintf("%s    selected: %s", total, detail)
 }
 
@@ -264,6 +290,7 @@ browser_history :: proc(b: ^Browser, backward: bool) -> os.Error {
 }
 
 browser_parent :: proc(b: ^Browser) -> os.Error {
+	if b.path == TRASH_PATH {return browser_history(b, true)}
 	parent, _ := os.split_path(b.path)
 	if parent == "" {parent = "/"}
 	return browser_navigate(b, parent)
@@ -272,6 +299,11 @@ browser_parent :: proc(b: ^Browser) -> os.Error {
 browser_enter :: proc(b: ^Browser) -> os.Error {
 	if len(b.visible) == 0 {return nil}
 	entry := b.entries[b.visible[b.selected]]
+	if b.path == TRASH_PATH &&
+	   (entry.type == .Directory || entry.type == .Symlink && os.is_dir(entry.fullpath)) {
+		browser_message(b, "restore this folder to browse it")
+		return nil
+	}
 	// Directory symlinks are followed only when the user opens them.
 	if entry.type == .Directory || (entry.type == .Symlink && os.is_dir(entry.fullpath)) {
 		return browser_navigate(b, entry.fullpath)

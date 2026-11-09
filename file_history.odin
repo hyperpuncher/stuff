@@ -1,6 +1,5 @@
 package main
 
-import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:sync"
@@ -10,6 +9,8 @@ File_Action :: enum {
 	Trash,
 	Rename,
 	New_Folder,
+	Restore,
+	List_Trash,
 }
 File_History_Mode :: enum {
 	Record,
@@ -71,7 +72,8 @@ file_change_check :: proc(change: File_Change, path: string) -> os.Error {
 
 file_history_run :: proc(op: ^File_Operation) {
 	to_trash :=
-		(op.kind == .Copy || op.kind == .New_Folder) && op.history == .Undo ||
+		(op.kind == .Copy || op.kind == .New_Folder || op.kind == .Restore) &&
+			op.history == .Undo ||
 		op.kind == .Trash && op.history == .Redo
 	mounts: [dynamic]Mount
 	if to_trash {
@@ -98,16 +100,10 @@ file_history_run :: proc(op: ^File_Operation) {
 			} else {
 				target :=
 					op.kind == .Rename && op.history == .Redo ? change.alternate : change.path
-				err = file_rename_new(from, target)
-				if err == nil && op.kind != .Rename {
-					// The data is restored before its trash record is removed.
-					if cleanup := os.remove(change.trash_info);
-					   cleanup != nil && cleanup != .Not_Exist {
-						fmt.eprintfln("cannot remove trash metadata: %v", cleanup)
-					}
-					delete(change.trash_info)
-					change.trash_info = ""
-				}
+				if op.kind ==
+				   .Rename {err = file_rename_new(from, target)} else {err = trash_restore(change)}
+				if err == nil &&
+				   op.kind != .Rename {delete(change.trash_info); change.trash_info = ""}
 			}
 		}
 		if err !=
