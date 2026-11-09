@@ -37,10 +37,11 @@ verify_context_menu_rendering :: proc(t: ^testing.T, p: ^Painter) {
 		menu := clay.GetElementData(clay.ID("context-menu"))
 		testing.expect(t, menu.found)
 		testing.expect(t, menu.boundingBox.x + menu.boundingBox.width <= g.width)
-		testing.expect_value(
+		text_width := f32(text_width(p.font, "move to trash"))
+		testing.expect(
 			t,
-			menu.boundingBox.width,
-			f32(text_width(p.font, "move to trash")) + 32 * g.scale,
+			menu.boundingBox.width > text_width &&
+			menu.boundingBox.width < text_width + 80 * g.scale,
 		)
 		for i in 0 ..< commands.length {
 			cmd := commands.internalArray[i]

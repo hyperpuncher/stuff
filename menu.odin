@@ -173,7 +173,13 @@ menu_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 		.Select_All = "select all",
 	}
 	// Keep measured geometry available for input before the popup's first frame.
-	b.menu.width = f32(text_width(p.font, names[.Trash])) + 32 * g.scale
+	b.menu.width = f32(text_width(p.font, names[.Trash])) + 60 * g.scale
+	icons := [Menu_Action]Icon {
+		.Copy       = .CopyPath,
+		.Paste      = .Paste,
+		.Trash      = .Trash,
+		.Select_All = .SelectAll,
+	}
 	if !b.menu.active {return}
 	box := menu_box(b.menu, g)
 	padding := 21 * g.scale
@@ -219,12 +225,14 @@ menu_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 				layout = {
 					sizing = {clay.SizingGrow(), clay.SizingFixed(g.row)},
 					padding = {left = u16(12 * g.scale), right = u16(12 * g.scale)},
+					childGap = u16(10 * g.scale),
 					childAlignment = {y = .Center},
 				},
 				backgroundColor = background,
 				cornerRadius = clay.CornerRadiusAll(4 * g.scale),
 			},
 			) {
+				icon_element(p, icons[action], g.scale)
 				label(name, enabled ? theme.text : theme.muted, g.scale)
 			}
 		}
