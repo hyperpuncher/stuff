@@ -29,7 +29,7 @@ menu_visible :: proc(b: ^Browser, action: Menu_Action) -> bool {
 	if action == .Trash {return b.path != TRASH_PATH}
 	if action == .Paste {return b.menu.paste && b.path != TRASH_PATH}
 	if action == .Rename {return len(b.marks) == 1 && b.path != TRASH_PATH}
-	if action == .New_Folder {return len(b.marks) == 0 && b.path != TRASH_PATH}
+	if action == .New_Folder {return b.path != TRASH_PATH}
 	return true
 }
 
@@ -39,9 +39,10 @@ menu_box :: proc(b: ^Browser, g: Geometry) -> clay.BoundingBox {
 	for action in Menu_Action {if menu_visible(b, action) {rows += 1}}
 	width, height := menu.width, f32(rows) * g.row + 8 * g.scale
 	margin := 24 * g.scale
+	vertical_margin := min(margin, max(0, (g.height - height) / 2))
 	return {
 		clamp(menu.x, margin, g.width - width - margin),
-		clamp(menu.y, margin, g.height - height - margin),
+		clamp(menu.y, vertical_margin, g.height - height - vertical_margin),
 		width,
 		height,
 	}

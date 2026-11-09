@@ -157,6 +157,14 @@ path_edit_input :: proc(
 	err: os.Error,
 ) {
 	edit := &b.header.edit
+	if event.type == .KEY_DOWN &&
+	   event.key.key == sdl.K_N &&
+	   event.key.mod & sdl.KMOD_CTRL != {} &&
+	   event.key.mod & sdl.KMOD_SHIFT != {} &&
+	   !edit.active {
+		if !event.key.repeat {file_dialog_start(b, false)}
+		return true, nil
+	}
 	if event.type == .KEY_DOWN && !edit_is_dialog(edit.mode) {
 		ctrl := event.key.mod & sdl.KMOD_CTRL != {}
 		slash :=

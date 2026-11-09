@@ -87,9 +87,9 @@ context_menu_preserves_groups_and_captures_input :: proc(t: ^testing.T) {
 	for paste in ([?]bool{false, true}) {
 		b.menu.paste = paste
 		box := menu_box(&b, g)
-		testing.expect_value(t, box.height, (paste ? 4 : 3) * g.row + 8 * g.scale)
+		testing.expect_value(t, box.height, (paste ? 5 : 4) * g.row + 8 * g.scale)
 		x, y := box.x + box.width / 2, box.y + 4 * g.scale + 1.5 * g.row
-		expected: Menu_Action = paste ? .Paste : .Trash
+		expected: Menu_Action = paste ? .Paste : .New_Folder
 		testing.expect_value(t, menu_action_at(&b, g, x, y), int(expected))
 		_ = pointer_move(&b, g, x, y)
 		testing.expect_value(t, b.hovered, clay.ID("menu-item", u32(expected)).id)

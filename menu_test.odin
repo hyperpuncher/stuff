@@ -92,6 +92,10 @@ verify_context_menu_rendering :: proc(t: ^testing.T, p: ^Painter) {
 		cached := p.menu_shadow
 		_ = layout(&b, g, p)
 		testing.expect_value(t, p.menu_shadow, cached)
+		b.menu.paste = true
+		small := geometry(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT, 1)
+		bounds := menu_box(&b, small)
+		testing.expect(t, bounds.y >= 0 && bounds.y + bounds.height <= small.height)
 		b.menu.active = false
 	}
 }
