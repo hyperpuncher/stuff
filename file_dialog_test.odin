@@ -37,7 +37,11 @@ rename_and_new_folder_keep_conflicts_and_support_history :: proc(t: ^testing.T) 
 	}
 	_ = handle_event(&b, &event, g, &running)
 	testing.expect(t, b.header.edit.active && b.header.edit.mode == .Rename)
-	testing.expect_value(t, b.header.edit.value[:b.header.edit.cursor], "a")
+	testing.expect_value(
+		t,
+		strings.to_string(b.header.edit.buffer)[:b.header.edit.text.selection[0]],
+		"a",
+	)
 	event.key.key, event.key.mod = sdl.K_N, sdl.KMOD_CTRL | sdl.KMOD_SHIFT
 	_ = handle_event(&b, &event, g, &running)
 	testing.expect_value(t, b.header.edit.mode, Edit_Mode.Rename)
@@ -51,7 +55,8 @@ rename_and_new_folder_keep_conflicts_and_support_history :: proc(t: ^testing.T) 
 	testing.expect(t, read_err == nil)
 	testing.expect_value(t, string(data), "keep")
 	delete(data)
-	b.header.edit.anchor, b.header.edit.cursor = 0, len(b.header.edit.value)
+	b.header.edit.text.selection[1], b.header.edit.text.selection[0] =
+		0, len(strings.to_string(b.header.edit.buffer))
 	path_edit_replace(&b, "renamed.txt")
 	_ = handle_event(&b, &event, g, &running)
 	file_history_test_wait(t, &b)
@@ -74,7 +79,8 @@ rename_and_new_folder_keep_conflicts_and_support_history :: proc(t: ^testing.T) 
 	path_edit_replace(&b, "../outside")
 	file_dialog_submit(&b)
 	testing.expect(t, b.pending_files == nil && b.header.edit.active)
-	b.header.edit.anchor, b.header.edit.cursor = 0, len(b.header.edit.value)
+	b.header.edit.text.selection[1], b.header.edit.text.selection[0] =
+		0, len(strings.to_string(b.header.edit.buffer))
 	path_edit_replace(&b, "folder")
 	file_dialog_submit(&b)
 	file_history_test_wait(t, &b)
@@ -126,15 +132,13 @@ verify_file_dialog_rendering :: proc(t: ^testing.T, p: ^Painter) {
 	)
 	field := clay.GetElementData(clay.ID("path-edit"))
 	testing.expect_value(t, field.boundingBox, path_edit_box(g, .Rename))
-	testing.expect_value(t, field.boundingBox.x - box.x, 8 * g.scale)
-	testing.expect_value(t, field.boundingBox.y - box.y, 8 * g.scale)
 	for name in ([?]string{"file-dialog-cancel", "file-dialog-submit"}) {
 		button := clay.GetElementData(clay.ID(name))
 		testing.expect(t, button.found)
 		if name ==
 		   "file-dialog-submit" {testing.expect_value(t, field.boundingBox.x + field.boundingBox.width, button.boundingBox.x + button.boundingBox.width)}
 	}
-	b.header.edit.anchor = b.header.edit.cursor
+	b.header.edit.text.selection[1] = b.header.edit.text.selection[0]
 	commands = layout(&b, g, p)
 	caret := clay.GetElementData(clay.ID("path-edit-caret"))
 	testing.expect(

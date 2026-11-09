@@ -81,11 +81,12 @@ search_shortcuts_filter_unicode_names_and_preserve_pointer_targets :: proc(t: ^t
 	testing.expect_value(t, len(b.visible), 6)
 	event.key.key = sdl.K_SLASH
 	_ = handle_event(&b, &event, g, &running)
-	testing.expect(t, b.header.edit.active && b.header.edit.value == "")
+	testing.expect(t, b.header.edit.active && strings.to_string(b.header.edit.buffer) == "")
 	for item in ([?]struct {
 			query, name: string,
 		}{{"прив", "ПРИВЕТ.txt"}, {"ος", "ΟΣ.txt"}, {"kelvin", "Kelvin.txt"}}) {
-		b.header.edit.anchor, b.header.edit.cursor = 0, len(b.header.edit.value)
+		b.header.edit.text.selection[1], b.header.edit.text.selection[0] =
+			0, len(strings.to_string(b.header.edit.buffer))
 		path_edit_replace(&b, item.query)
 		testing.expect_value(t, len(b.visible), 1)
 		if len(b.visible) == 1 {testing.expect_value(t, b.entries[b.visible[0]].name, item.name)}
@@ -97,7 +98,7 @@ search_shortcuts_filter_unicode_names_and_preserve_pointer_targets :: proc(t: ^t
 	testing.expect_value(t, b.search, "")
 	testing.expect_value(t, len(b.visible), 6)
 	testing.expect(t, b.header.edit.active && b.header.edit.mode == .Path)
-	testing.expect_value(t, b.header.edit.value, b.path)
+	testing.expect_value(t, strings.to_string(b.header.edit.buffer), b.path)
 }
 
 @(test)
@@ -142,7 +143,7 @@ search_stays_local_survives_refresh_and_clears_on_navigation :: proc(t: ^testing
 	file_dialog_start(&b, true)
 	testing.expect_value(t, b.search, "")
 	testing.expect(t, b.header.edit.active && b.header.edit.mode == .Rename)
-	testing.expect_value(t, b.header.edit.value, "nested-only.txt")
+	testing.expect_value(t, strings.to_string(b.header.edit.buffer), "nested-only.txt")
 }
 
 verify_search_rendering :: proc(t: ^testing.T, p: ^Painter) {

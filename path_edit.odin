@@ -3,6 +3,7 @@ package main
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import text_edit "core:text/edit"
 import "core:unicode"
 import "core:unicode/utf8"
 import clay "vendor/clay"
@@ -19,38 +20,47 @@ Edit_Mode :: enum {
 edit_is_dialog :: proc(mode: Edit_Mode) -> bool {return mode == .Rename || mode == .New_Folder}
 
 Path_Edit :: struct {
-	active, dragging:   bool,
-	mode:               Edit_Mode,
-	source:             string,
-	waiting:            ^File_Operation,
-	value, composition: string, // Owned. Cursor and anchor are grapheme byte boundaries.
-	cursor, anchor:     int,
-	offset:             f32,
-	font:               ^ttf.Font, // Borrowed for pointer hit testing on the UI thread.
-	undo, redo:         [dynamic]Edit_Snapshot,
+	active, dragging:    bool,
+	mode:                Edit_Mode,
+	source, composition: string, // Owned; core edits the separate builder.
+	waiting:             ^File_Operation,
+	buffer:              strings.Builder,
+	text:                text_edit.State, // Borrows buffer. Keep the active editor at a stable address.
+	offset:              f32,
+	font:                ^ttf.Font, // Borrowed for pointer hit testing on the UI thread.
 }
 
 path_edit_end :: proc(edit: ^Path_Edit) {
-	delete(edit.value)
+	text_edit.destroy(&edit.text)
+	strings.builder_destroy(&edit.buffer)
 	delete(edit.source)
 	delete(edit.composition)
-	edit_history_clear(&edit.undo)
-	edit_history_clear(&edit.redo)
 	font := edit.font
 	edit^ = {
 		font = font,
 	}
 }
 
+path_edit_init :: proc(b: ^Browser, value: string) {
+	edit := &b.header.edit
+	strings.builder_init(&edit.buffer)
+	strings.write_string(&edit.buffer, value)
+	text_edit.init(&edit.text, context.allocator, context.allocator)
+	text_edit.setup_once(&edit.text, &edit.buffer)
+	edit.text.translate_by_grapheme = true
+	edit.text.set_clipboard, edit.text.get_clipboard =
+		path_edit_clipboard_set, path_edit_clipboard_get
+	edit.text.clipboard_user_data = b
+}
+
 path_edit_start :: proc(b: ^Browser) {
 	search_end(b)
 	edit := &b.header.edit
 	if edit.mode != .Path {path_edit_end(edit)}
-	if !edit.active {edit.value = strings.clone(b.path)}
+	if !edit.active {path_edit_init(b, b.path)}
 	edit.active = true
-	edit.anchor, edit.cursor = 0, len(edit.value)
-	b.menu.active, b.places.focused = false, false
-	b.drag = {}
+	text_edit.perform_command(&edit.text, .End)
+	b.menu.active, b.places.focused, b.drag = false, false, {}
 	browser_message(b, "")
 }
 
@@ -67,30 +77,94 @@ path_edit_box :: proc(g: Geometry, mode: Edit_Mode = .Path) -> clay.BoundingBox 
 	return {4 * g.scale, 4 * g.scale, g.width - 8 * g.scale, g.header - 8 * g.scale}
 }
 
-path_edit_boundary :: proc(value: string, cursor: int, forward: bool, word := false) -> int {
-	if word {return path_edit_word_boundary(value, cursor, forward)}
-	previous := 0
-	it := utf8.decode_grapheme_iterator_make(value)
-	for _, cluster in utf8.decode_grapheme_iterate(&it) {
-		next := cluster.byte_index + len(cluster.text)
-		if forward && next > cursor {return next}
-		if !forward && next >= cursor {return previous}
-		previous = next
-	}
-	return forward ? len(value) : 0
+path_edit_single_line :: proc(b: ^Browser, value: string) -> bool {
+	if strings.contains_any(
+		value,
+		"\r\n\x00",
+	) {browser_message(b, "a path must fit on one line"); return false}
+	return true
 }
 
-// Move to a word end going forward, or a word start going backward. Keep
-// underscores in words; punctuation and whitespace separate path components.
-path_edit_word_boundary :: proc(value: string, cursor: int, forward: bool) -> int {
-	start, in_word := 0, false
+path_edit_changed :: proc(b: ^Browser) {
+	edit := &b.header.edit
+	// Core owns the snapshots. Keep only the application's history bound.
+	if len(edit.text.undo) > 100 {free(pop_front(&edit.text.undo), edit.text.undo_text_allocator)}
+	delete(edit.composition)
+	edit.composition = ""
+	search_update(b)
+}
+
+path_edit_replace :: proc(b: ^Browser, value: string) {
+	if !path_edit_single_line(b, value) {return}
+	text_edit.update_time(&b.header.edit.text)
+	text_edit.input_text(&b.header.edit.text, value)
+	path_edit_changed(b)
+}
+
+path_edit_clipboard_set :: proc(data: rawptr, value: string) -> bool {
+	b := cast(^Browser)data
+	if !sdl.SetClipboardText(
+		strings.clone_to_cstring(value, context.temp_allocator),
+	) {browser_message(b, string(sdl.GetError())); return false}
+	return true
+}
+
+path_edit_clipboard_get :: proc(data: rawptr) -> (string, bool) {
+	b := cast(^Browser)data
+	if !sdl.HasClipboardText() {return "", false}
+	value := sdl.GetClipboardText()
+	if value == nil {browser_message(b, string(sdl.GetError())); return "", false}
+	defer sdl.free(value)
+	text := string(cast(cstring)value)
+	if !path_edit_single_line(b, text) {return "", false}
+	return strings.clone(text, context.temp_allocator), true
+}
+
+path_edit_key :: proc(key: sdl.Keycode, ctrl, shift: bool) -> text_edit.Command {
+	switch key {
+	case sdl.K_Z:
+		if ctrl {return shift ? .Redo : .Undo}
+	case sdl.K_A:
+		if ctrl {return .Select_All}
+	case sdl.K_C:
+		if ctrl {return .Copy}
+	case sdl.K_X:
+		if ctrl {return .Cut}
+	case sdl.K_V:
+		if ctrl {return .Paste}
+	case sdl.K_INSERT:
+		if ctrl && !shift {return .Copy}
+		if shift && !ctrl {return .Paste}
+	case sdl.K_LEFT:
+		return shift ? (ctrl ? .Select_Word_Left : .Select_Left) : (ctrl ? .Word_Left : .Left)
+	case sdl.K_RIGHT:
+		return shift ? (ctrl ? .Select_Word_Right : .Select_Right) : (ctrl ? .Word_Right : .Right)
+	case sdl.K_HOME:
+		return shift ? .Select_Start : .Start
+	case sdl.K_END:
+		return shift ? .Select_End : .End
+	case sdl.K_BACKSPACE:
+		return ctrl ? .Delete_Word_Left : .Backspace
+	case sdl.K_DELETE:
+		return shift && !ctrl ? .Cut : ctrl ? .Delete_Word_Right : .Delete
+	}
+	return .None
+}
+
+// Core supplies editing and undo. Word shortcuts also stop at punctuation.
+path_edit_word_position :: proc(state: ^text_edit.State, forward: bool) -> int {
+	value := strings.to_string(state.builder^)
+	cursor := state.selection[0]
+	start, in_word, spaces := 0, false, false
 	it := utf8.decode_grapheme_iterator_make(value)
 	for _, cluster in utf8.decode_grapheme_iterate(&it) {
 		r, _ := utf8.decode_rune_in_string(cluster.text)
-		separator := unicode.is_space(r) || unicode.is_punct(r) && r != '_'
+		space := unicode.is_space(r)
+		separator := space || unicode.is_punct(r) && r != '_'
 		if forward {
 			if cluster.byte_index < cursor {continue}
-			if separator && in_word {return cluster.byte_index}
+			if space {spaces = true; continue}
+			if spaces || separator && in_word {return cluster.byte_index}
 			if !separator {in_word = true}
 		} else {
 			if cluster.byte_index >= cursor {break}
@@ -101,51 +175,48 @@ path_edit_word_boundary :: proc(value: string, cursor: int, forward: bool) -> in
 	return forward ? len(value) : start
 }
 
-path_edit_replace :: proc(b: ^Browser, value: string) {
-	edit := &b.header.edit
-	path_edit_replace_range(b, value, min(edit.cursor, edit.anchor), max(edit.cursor, edit.anchor))
-}
-
-path_edit_replace_range :: proc(b: ^Browser, value: string, low, high: int) {
-	if strings.contains_any(
-		value,
-		"\r\n\x00",
-	) {browser_message(b, "a path must fit on one line"); return}
-	edit := &b.header.edit
-	next := fmt.aprintf("%s%s%s", edit.value[:low], value, edit.value[high:])
-	if next != edit.value {
-		edit_history_push(&edit.undo, {edit.value, edit.cursor, edit.anchor})
-		edit_history_clear(&edit.redo)
-	} else {delete(next); next = edit.value}
-	delete(edit.composition)
-	edit.value, edit.composition = next, ""
-	edit.cursor, edit.anchor = low + len(value), low + len(value)
-	search_update(b)
-}
-
-path_edit_copy :: proc(b: ^Browser) -> bool {
-	edit := &b.header.edit
-	low, high := min(edit.cursor, edit.anchor), max(edit.cursor, edit.anchor)
-	if low == high {return false}
-	value := strings.clone_to_cstring(edit.value[low:high])
-	defer delete(value)
-	if !sdl.SetClipboardText(value) {browser_message(b, string(sdl.GetError())); return false}
-	return true
+path_edit_command :: proc(state: ^text_edit.State, command: text_edit.Command) {
+	#partial switch command {
+	case .Word_Left,
+	     .Word_Right,
+	     .Select_Word_Left,
+	     .Select_Word_Right,
+	     .Delete_Word_Left,
+	     .Delete_Word_Right:
+		forward :=
+			command in text_edit.Command_Set{.Word_Right, .Select_Word_Right, .Delete_Word_Right}
+		position := path_edit_word_position(state, forward)
+		#partial switch command {
+		case .Word_Left, .Word_Right:
+			state.selection = {position, position}
+		case .Select_Word_Left, .Select_Word_Right:
+			state.selection[0] = position
+		case .Delete_Word_Left, .Delete_Word_Right:
+			if text_edit.has_selection(state) {text_edit.selection_delete(state)} else {
+				low, high := min(state.selection[0], position), max(state.selection[0], position)
+				text_edit.remove(state, low, high)
+				state.selection = {low, low}
+			}
+		}
+	case:
+		text_edit.perform_command(state, command)
+	}
 }
 
 path_edit_click :: proc(edit: ^Path_Edit, g: Geometry, x: f32, extend: bool) {
 	if edit.font == nil {return}
 	target := x - path_edit_box(g, edit.mode).x - 8 * g.scale + edit.offset
 	cursor, previous_width := 0, f32(0)
-	it := utf8.decode_grapheme_iterator_make(edit.value)
+	value := strings.to_string(edit.buffer)
+	it := utf8.decode_grapheme_iterator_make(value)
 	for _, cluster in utf8.decode_grapheme_iterate(&it) {
 		next := cluster.byte_index + len(cluster.text)
-		width := f32(text_width(edit.font, edit.value[:next]))
+		width := f32(text_width(edit.font, value[:next]))
 		if target < (previous_width + width) / 2 {break}
 		cursor, previous_width = next, width
 	}
-	edit.cursor = cursor
-	if !extend {edit.anchor = cursor}
+	edit.text.selection[0] = cursor
+	if !extend {edit.text.selection[1] = cursor}
 }
 
 path_edit_input :: proc(
@@ -264,17 +335,11 @@ path_edit_input :: proc(
 	case .KEY_DOWN:
 		ctrl, shift := event.key.mod & sdl.KMOD_CTRL != {}, event.key.mod & sdl.KMOD_SHIFT != {}
 		key := event.key.key
-		if ctrl && key == sdl.K_Z {path_edit_undo(edit, shift); search_update(b); return true, nil}
-		if ctrl && key == sdl.K_A {edit.anchor, edit.cursor = 0, len(edit.value); return true, nil}
-		copy := ctrl && key == sdl.K_C || ctrl && !shift && key == sdl.K_INSERT
-		cut := ctrl && key == sdl.K_X || shift && !ctrl && key == sdl.K_DELETE
-		paste := ctrl && key == sdl.K_V || shift && !ctrl && key == sdl.K_INSERT
-		if copy || cut {if path_edit_copy(b) && cut {path_edit_replace(b, "")}; return true, nil}
-		if paste {
-			if !sdl.HasClipboardText() {return true, nil}
-			value := sdl.GetClipboardText()
-			defer sdl.free(value)
-			path_edit_replace(b, string(cast(cstring)value))
+		command := path_edit_key(key, ctrl, shift)
+		if command != .None {
+			text_edit.update_time(&edit.text)
+			path_edit_command(&edit.text, command)
+			path_edit_changed(b)
 			return true, nil
 		}
 		switch key {
@@ -284,8 +349,8 @@ path_edit_input :: proc(
 			if event.key.repeat || edit.composition != "" {return true, nil}
 			if edit.mode == .Search {search_blur(edit); return true, nil}
 			if edit_is_dialog(edit.mode) {file_dialog_submit(b); return true, nil}
-			if edit.value == "" {browser_message(b, "enter a folder path"); return true, nil}
-			target := edit.value
+			target := strings.to_string(edit.buffer)
+			if target == "" {browser_message(b, "enter a folder path"); return true, nil}
 			if target ==
 			   TRASH_PATH {err = browser_navigate(b, target); if err == nil {path_edit_end(edit)}; return true, err}
 			if target == "~" || strings.has_prefix(target, "~/") {
@@ -298,15 +363,6 @@ path_edit_input :: proc(
 			err = browser_navigate(b, target)
 			if err == nil {path_edit_end(edit)}
 			return true, err
-		case sdl.K_LEFT, sdl.K_RIGHT, sdl.K_HOME, sdl.K_END:
-			if key ==
-			   sdl.K_HOME {edit.cursor = 0} else if key == sdl.K_END {edit.cursor = len(edit.value)} else if !shift && edit.cursor != edit.anchor {edit.cursor = key == sdl.K_LEFT ? min(edit.cursor, edit.anchor) : max(edit.cursor, edit.anchor)} else {edit.cursor = path_edit_boundary(edit.value, edit.cursor, key == sdl.K_RIGHT, ctrl)}
-			if !shift {edit.anchor = edit.cursor}
-		case sdl.K_BACKSPACE, sdl.K_DELETE:
-			anchor := edit.anchor
-			if edit.cursor ==
-			   anchor {anchor = path_edit_boundary(edit.value, edit.cursor, key == sdl.K_DELETE, ctrl)}
-			path_edit_replace_range(b, "", min(edit.cursor, anchor), max(edit.cursor, anchor))
 		}
 		return true, nil // File actions and navigation stay inactive while editing.
 	}
@@ -314,13 +370,12 @@ path_edit_input :: proc(
 }
 
 path_edit_caret :: proc(edit: ^Path_Edit) -> f32 {
+	value := strings.to_string(edit.buffer)
 	if edit.composition != "" {
-		low := min(edit.cursor, edit.anchor)
-		return f32(
-			text_width(edit.font, edit.value[:low]) + text_width(edit.font, edit.composition),
-		)
+		low, _ := text_edit.sorted_selection(&edit.text)
+		return f32(text_width(edit.font, value[:low]) + text_width(edit.font, edit.composition))
 	}
-	return f32(text_width(edit.font, edit.value[:edit.cursor]))
+	return f32(text_width(edit.font, value[:edit.text.selection[0]]))
 }
 
 path_edit_ime_area :: proc(edit: ^Path_Edit, g: Geometry, window: ^sdl.Window) {
@@ -339,14 +394,14 @@ path_edit_ime_area :: proc(edit: ^Path_Edit, g: Geometry, window: ^sdl.Window) {
 path_edit_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 	edit := &b.header.edit
 	box := path_edit_box(g, edit.mode)
-	low, high := min(edit.cursor, edit.anchor), max(edit.cursor, edit.anchor)
+	low, high := text_edit.sorted_selection(&edit.text)
 	cursor := path_edit_caret(edit)
 	width := box.width - 16 * g.scale
 	edit.offset = max(0, clamp(edit.offset, cursor - width + 2 * g.scale, cursor))
-	display := edit.value
+	display := strings.to_string(edit.buffer)
 	selection_color := theme.selected
 	if edit.composition != "" {
-		display = fmt.tprintf("%s%s%s", edit.value[:low], edit.composition, edit.value[high:])
+		display = fmt.tprintf("%s%s%s", display[:low], edit.composition, display[high:])
 		high = low + len(edit.composition)
 		selection_color = theme.inactive_selection
 	}

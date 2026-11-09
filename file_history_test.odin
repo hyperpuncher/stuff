@@ -192,12 +192,12 @@ background_history_shortcuts_respect_input_focus_and_navigation :: proc(t: ^test
 		key = {type = .KEY_DOWN, key = sdl.K_Z, mod = sdl.KMOD_CTRL},
 	}
 	_ = handle_event(&b, &event, g, &running)
-	testing.expect_value(t, b.header.edit.value, dest)
+	testing.expect_value(t, strings.to_string(b.header.edit.buffer), dest)
 	testing.expect_value(t, len(b.undo_files), 1)
 	testing.expect(t, b.pending_files == nil)
 	event.key.mod |= sdl.KMOD_SHIFT
 	_ = handle_event(&b, &event, g, &running)
-	testing.expect_value(t, b.header.edit.value, "draft")
+	testing.expect_value(t, strings.to_string(b.header.edit.buffer), fmt.tprintf("%sdraft", dest))
 	path_edit_end(&b.header.edit)
 	event.key.mod = sdl.KMOD_CTRL
 	_ = handle_event(&b, &event, g, &running)

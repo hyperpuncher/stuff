@@ -20,15 +20,16 @@ file_dialog_start :: proc(b: ^Browser, rename: bool) {
 	if rename {
 		for index in b.marks {
 			entry := b.entries[index]
-			edit.source, edit.value = strings.clone(entry.fullpath), strings.clone(entry.name)
-			edit.cursor = len(edit.value)
+			edit.source = strings.clone(entry.fullpath)
+			path_edit_init(b, entry.name)
 			if entry.type != .Directory {
-				if dot := strings.last_index_byte(edit.value, '.'); dot > 0 {edit.cursor = dot}
+				if dot := strings.last_index_byte(entry.name, '.');
+				   dot > 0 {edit.text.selection[0] = dot}
 			}
 		}
 	} else {
-		edit.source, edit.value = strings.clone(b.path), strings.clone("new folder")
-		edit.cursor = len(edit.value)
+		edit.source = strings.clone(b.path)
+		path_edit_init(b, "new folder")
 	}
 	edit.active = true
 	b.menu.active, b.places.focused, b.drag = false, false, {}
@@ -38,7 +39,7 @@ file_dialog_start :: proc(b: ^Browser, rename: bool) {
 file_dialog_submit :: proc(b: ^Browser) {
 	edit := &b.header.edit
 	if edit.waiting != nil {return}
-	name := edit.value
+	name := strings.to_string(edit.buffer)
 	if name == "" || name == "." || name == ".." || strings.contains_any(name, "/\r\n\x00") {
 		browser_message(b, "enter a name without slashes")
 		return

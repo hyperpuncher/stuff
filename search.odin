@@ -1,6 +1,7 @@
 package main
 
 import "core:strings"
+import text_edit "core:text/edit"
 import "core:unicode/utf8"
 
 // Compare equal-length rune windows without allocating a folded copy of each
@@ -31,18 +32,20 @@ search_start :: proc(b: ^Browser) {
 	edit := &b.header.edit
 	if edit.mode != .Search {
 		path_edit_end(edit)
-		edit.mode, edit.value = .Search, strings.clone(b.search)
+		path_edit_init(b, b.search)
+		edit.mode = .Search
 	}
 	edit.active, edit.dragging = true, false
-	edit.anchor, edit.cursor = 0, len(edit.value)
+	text_edit.perform_command(&edit.text, .Select_All)
 	b.menu.active, b.places.focused, b.drag = false, false, {}
 	browser_message(b, "")
 }
 
 search_update :: proc(b: ^Browser) {
-	if b.header.edit.mode != .Search || b.search == b.header.edit.value {return}
+	value := strings.to_string(b.header.edit.buffer)
+	if b.header.edit.mode != .Search || b.search == value {return}
 	delete(b.search)
-	b.search = strings.clone(b.header.edit.value)
+	b.search = strings.clone(value)
 	browser_filter(b)
 	browser_message(b, "")
 }
@@ -65,7 +68,7 @@ search_end :: proc(b: ^Browser) {
 
 search_blur :: proc(edit: ^Path_Edit) {
 	edit.active, edit.dragging = false, false
-	edit.anchor = edit.cursor
+	edit.text.selection[1] = edit.text.selection[0]
 	delete(edit.composition)
 	edit.composition = ""
 }

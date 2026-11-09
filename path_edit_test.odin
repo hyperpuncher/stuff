@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:testing"
+import text_edit "core:text/edit"
 import clay "vendor/clay"
 import sdl "vendor:sdl3"
 
@@ -27,13 +28,20 @@ path_editor_navigation_clipboard_and_cancel :: proc(t: ^testing.T) {
 	}
 	_ = handle_event(&b, &event, g, &running)
 	testing.expect(t, b.header.edit.active)
-	testing.expect_value(t, b.header.edit.value, root)
-	testing.expect_value(t, b.header.edit.cursor - b.header.edit.anchor, len(root))
+	testing.expect_value(t, strings.to_string(b.header.edit.buffer), root)
+	testing.expect_value(t, b.header.edit.text.selection, [2]int{len(root), len(root)})
 	event = {
-		text = {type = .TEXT_INPUT, text = "folder space 雪"},
+		text = {type = .TEXT_INPUT, text = "/folder space 雪"},
 	}
 	_ = handle_event(&b, &event, g, &running)
 	testing.expect_value(t, b.path, root) // Typing must not navigate yet.
+	testing.expect_value(t, strings.to_string(b.header.edit.buffer), child)
+	event = {
+		key = {type = .KEY_DOWN, key = sdl.K_L, mod = sdl.KMOD_CTRL},
+	}
+	_ = handle_event(&b, &event, g, &running)
+	testing.expect_value(t, strings.to_string(b.header.edit.buffer), child)
+	testing.expect_value(t, b.header.edit.text.selection, [2]int{len(child), len(child)})
 	event = {
 		key = {type = .KEY_DOWN, key = sdl.K_RETURN},
 	}
@@ -47,6 +55,8 @@ path_editor_navigation_clipboard_and_cancel :: proc(t: ^testing.T) {
 		mod  = sdl.KMOD_CTRL,
 	}
 	_ = handle_event(&b, &event, g, &running)
+	event.key.key = sdl.K_A
+	_ = handle_event(&b, &event, g, &running)
 	event = {
 		text = {type = .TEXT_INPUT, text = "missing"},
 	}
@@ -56,7 +66,7 @@ path_editor_navigation_clipboard_and_cancel :: proc(t: ^testing.T) {
 	}
 	_ = handle_event(&b, &event, g, &running)
 	testing.expect_value(t, b.path, child)
-	testing.expect_value(t, b.header.edit.value, "missing")
+	testing.expect_value(t, strings.to_string(b.header.edit.buffer), "missing")
 	testing.expect(t, b.header.edit.active && b.status_error != "")
 	event.key.key = sdl.K_ESCAPE
 	_ = handle_event(&b, &event, g, &running)
@@ -69,12 +79,22 @@ path_editor_navigation_clipboard_and_cancel :: proc(t: ^testing.T) {
 		mod  = sdl.KMOD_CTRL,
 	}
 	_ = handle_event(&b, &event, g, &running)
+	event.key.key = sdl.K_A
+	_ = handle_event(&b, &event, g, &running)
 	event.key.key = sdl.K_X
 	_ = handle_event(&b, &event, g, &running)
-	testing.expect_value(t, b.header.edit.value, "")
+	testing.expect_value(t, strings.to_string(b.header.edit.buffer), "")
+	event.key.key, event.key.mod = sdl.K_INSERT, sdl.KMOD_SHIFT
+	_ = handle_event(&b, &event, g, &running)
+	testing.expect_value(t, strings.to_string(b.header.edit.buffer), child)
+	// Reject clipboard line breaks before core can delete the current selection.
+	event.key.key, event.key.mod = sdl.K_A, sdl.KMOD_CTRL
+	_ = handle_event(&b, &event, g, &running)
+	sdl_check(sdl.SetClipboardText("bad\npath"))
 	event.key.key = sdl.K_V
 	_ = handle_event(&b, &event, g, &running)
-	testing.expect_value(t, b.header.edit.value, child)
+	testing.expect_value(t, strings.to_string(b.header.edit.buffer), child)
+	testing.expect(t, b.status_error != "")
 	event.key = {
 		type = .KEY_DOWN,
 		key  = sdl.K_RETURN,
@@ -83,7 +103,7 @@ path_editor_navigation_clipboard_and_cancel :: proc(t: ^testing.T) {
 	testing.expect(t, !b.header.edit.active)
 	testing.expect_value(t, b.path, child)
 	path_edit_start(&b)
-	path_edit_replace(&b, ".")
+	path_edit_replace(&b, "/.")
 	_ = handle_event(&b, &event, g, &running)
 	testing.expect_value(t, b.path, child)
 	testing.expect_value(t, len(b.back), 1) // An alias of the current folder adds no history entry.
@@ -107,6 +127,7 @@ path_editor_preserves_graphemes_and_blocks_file_actions :: proc(t: ^testing.T) {
 	}
 	_ = handle_event(&b, &event, g, &running)
 	testing.expect(t, b.header.edit.active && !b.places.focused)
+	text_edit.perform_command(&b.header.edit.text, .Select_All)
 	event = {
 		text = {type = .TEXT_INPUT, text = "a\u0301👩‍💻雪"},
 	}
@@ -115,21 +136,21 @@ path_editor_preserves_graphemes_and_blocks_file_actions :: proc(t: ^testing.T) {
 		key = {type = .KEY_DOWN, key = sdl.K_BACKSPACE},
 	}
 	_ = handle_event(&b, &event, g, &running)
-	testing.expect_value(t, b.header.edit.value, "a\u0301👩‍💻")
+	testing.expect_value(t, strings.to_string(b.header.edit.buffer), "a\u0301👩‍💻")
 	_ = handle_event(&b, &event, g, &running)
-	testing.expect_value(t, b.header.edit.value, "a\u0301")
+	testing.expect_value(t, strings.to_string(b.header.edit.buffer), "a\u0301")
 	event.key.key = sdl.K_LEFT
 	_ = handle_event(&b, &event, g, &running)
-	testing.expect_value(t, b.header.edit.cursor, 0)
+	testing.expect_value(t, b.header.edit.text.selection[0], 0)
 	event.key.key, event.key.mod = sdl.K_RIGHT, sdl.KMOD_SHIFT
 	_ = handle_event(&b, &event, g, &running)
 	event.key.key, event.key.mod = sdl.K_DELETE, {}
 	_ = handle_event(&b, &event, g, &running)
-	testing.expect_value(t, b.header.edit.value, "")
+	testing.expect_value(t, strings.to_string(b.header.edit.buffer), "")
 	testing.expect(t, b.pending_files == nil)
 	testing.expect_value(t, len(b.marks), 1)
 	path_edit_replace(&b, "bad\npath")
-	testing.expect_value(t, b.header.edit.value, "")
+	testing.expect_value(t, strings.to_string(b.header.edit.buffer), "")
 	event = {
 		edit = {type = .TEXT_EDITING, text = "雪"},
 	}
@@ -144,7 +165,7 @@ path_editor_preserves_graphemes_and_blocks_file_actions :: proc(t: ^testing.T) {
 		text = {type = .TEXT_INPUT, text = "雪"},
 	}
 	_ = handle_event(&b, &event, g, &running)
-	testing.expect_value(t, b.header.edit.value, "雪")
+	testing.expect_value(t, strings.to_string(b.header.edit.buffer), "雪")
 	testing.expect_value(t, b.header.edit.composition, "")
 }
 
@@ -167,7 +188,7 @@ verify_path_editor_rendering :: proc(t: ^testing.T, p: ^Painter) {
 	paint(p, commands, 960, 640)
 	// A pointer drag selects text in the field without changing file selection.
 	path_edit_click(&b.header.edit, g, entry.boundingBox.x + 10, false)
-	anchor := b.header.edit.anchor
+	anchor := b.header.edit.text.selection[1]
 	b.header.edit.dragging = true
 	event := sdl.Event {
 		motion = {
@@ -178,15 +199,16 @@ verify_path_editor_rendering :: proc(t: ^testing.T, p: ^Painter) {
 	}
 	running := true
 	_ = handle_event(&b, &event, g, &running)
-	testing.expect_value(t, b.header.edit.anchor, anchor)
-	testing.expect(t, b.header.edit.cursor > anchor)
+	testing.expect_value(t, b.header.edit.text.selection[1], anchor)
+	testing.expect(t, b.header.edit.text.selection[0] > anchor)
 	testing.expect_value(t, pointer_cursor(&b, g), sdl.SystemCursor.TEXT)
 	paint(p, layout(&b, g, p), 960, 640)
 	window := sdl.GetRenderWindow(p.renderer)
 	sdl_check(sdl.StartTextInput(window))
 	path_edit_ime_area(&b.header.edit, g, window)
 	sdl_check(sdl.StopTextInput(window))
-	b.header.edit.cursor, b.header.edit.anchor = len(b.header.edit.value), len(b.header.edit.value)
+	b.header.edit.text.selection[0], b.header.edit.text.selection[1] =
+		len(strings.to_string(b.header.edit.buffer)), len(strings.to_string(b.header.edit.buffer))
 	_ = layout(&b, g, p)
 	caret := clay.GetElementData(clay.ID("path-edit-caret"))
 	testing.expect(
@@ -197,10 +219,11 @@ verify_path_editor_rendering :: proc(t: ^testing.T, p: ^Painter) {
 	)
 
 	path_edit_start(&b)
+	text_edit.perform_command(&b.header.edit.text, .Select_All)
 	path_edit_replace(&b, "/home/igor")
 	origin: clay.BoundingBox
-	for cursor in 0 ..= len(b.header.edit.value) {
-		b.header.edit.cursor, b.header.edit.anchor = cursor, cursor
+	for cursor in 0 ..= len(strings.to_string(b.header.edit.buffer)) {
+		b.header.edit.text.selection[0], b.header.edit.text.selection[1] = cursor, cursor
 		line_commands := layout(&b, g, p)
 		text := clay.GetElementData(clay.ID("path-edit-text"))
 		testing.expect(t, text.found)
@@ -211,12 +234,13 @@ verify_path_editor_rendering :: proc(t: ^testing.T, p: ^Painter) {
 			cmd := line_commands.internalArray[i]
 			if cmd.commandType != .Text {continue}
 			contents := cmd.renderData.text.stringContents
-			if string(contents.chars[:contents.length]) == b.header.edit.value {whole_lines += 1}
+			if string(contents.chars[:contents.length]) ==
+			   strings.to_string(b.header.edit.buffer) {whole_lines += 1}
 		}
 		testing.expect_value(t, whole_lines, 1)
 		paint(p, line_commands, 960, 640)
 	}
-	b.header.edit.anchor = 0
+	b.header.edit.text.selection[1] = 0
 	_ = layout(&b, g, p)
 	testing.expect_value(t, clay.GetElementData(clay.ID("path-edit-text")).boundingBox, origin)
 }
