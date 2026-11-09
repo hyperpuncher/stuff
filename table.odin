@@ -28,7 +28,7 @@ geometry :: proc(
 		scale        = scale,
 		header       = max(36, font_height + 12) * scale,
 		footer       = max(40, font_height + 12) * scale,
-		row          = max(32, font_height + 10) * scale,
+		row          = max(30, font_height + 8) * scale,
 		font_size    = font_size * scale,
 		padding      = 16 * scale,
 		gap          = 24 * scale,

@@ -145,11 +145,11 @@ xdg_places_and_navigation :: proc(t: ^testing.T) {
 		wheel = {type = .MOUSE_WHEEL, y = -1, mouse_x = 20, mouse_y = g.list_top + 1},
 	}
 	testing.expect(t, handle_event(&b, &event, g, &running))
-	testing.expect_value(t, b.places.first, 2)
+	testing.expect_value(t, b.places.first, 1)
 	testing.expect_value(t, b.first, 0)
 	event.wheel.mouse_x = g.sidebar + 20
 	testing.expect(t, handle_event(&b, &event, g, &running))
-	testing.expect_value(t, b.places.first, 2)
+	testing.expect_value(t, b.places.first, 1)
 	testing.expect_value(t, b.first, 3)
 
 	g = geometry(960, 640, 1)
