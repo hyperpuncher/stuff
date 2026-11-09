@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+archives=${1:-build/release}
+out="$PWD/build/package-tests"
+bash scripts/prepare-aur.sh 0.0.0 "$archives" "$out"
+
+# use the local archive; never download an unpublished test release.
+cp "$archives/stuff-linux-x64.tar.zst" "$out/stuff-bin/stuff-bin-0.0.0-linux-x64.tar.zst"
+makepkg --dir "$out/stuff-bin" --force --noconfirm
+
+# build the current checkout rather than the older public main branch.
+source="$out/stuff-git/src/stuff"
+mkdir -p "$source"
+tar --exclude='./.git' --exclude='./build' -cf - . | tar -xf - -C "$source"
+makepkg --dir "$out/stuff-git" --noextract --force --noconfirm
+
+for package in stuff-bin stuff-git; do
+	directory="$out/$package"
+	report=$(namcap "$directory/PKGBUILD" "$directory/"*.pkg.tar.zst)
+	printf '%s\n' "$report"
+	if [[ $report == *' E: '* ]]; then exit 1; fi
+	root="$directory/pkg/$package"
+	test -f "$root/usr/share/applications/stuff.desktop"
+	test -f "$root/usr/share/icons/hicolor/scalable/apps/stuff.svg"
+	for license in LICENSE clay.txt lucide.txt; do
+		test -s "$root/usr/share/licenses/$package/$license"
+	done
+	SDL_VIDEODRIVER=dummy SDL_RENDER_DRIVER=software "$root/usr/bin/stuff" --smoke
+done

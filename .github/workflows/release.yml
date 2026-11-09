@@ -1,0 +1,120 @@
+name: release
+
+on:
+  push:
+    tags: ["v[0-9]*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+
+  release:
+    needs: build
+    runs-on: ubuntu-slim
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: stuff-*
+          path: build/release
+          merge-multiple: true
+      - name: checksum archives
+        run: (cd build/release && sha256sum stuff-linux-*.tar.zst > SHA256SUMS)
+      - uses: hyperpuncher/release-notes@v1
+        id: notes
+      - uses: softprops/action-gh-release@v3
+        with:
+          body_path: ${{ steps.notes.outputs.path }}
+          files: |
+            build/release/stuff-linux-*.tar.zst
+            build/release/SHA256SUMS
+          fail_on_unmatched_files: true
+
+  aur:
+    needs: release
+    runs-on: ubuntu-26.04
+    container: archlinux:base-devel
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: install tools
+        run: pacman -Syu --noconfirm --needed git github-cli openssh
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: download release archives
+        run: |
+          mkdir -p build/release
+          gh release download "$GITHUB_REF_NAME" --dir build/release
+          (cd build/release && sha256sum --check SHA256SUMS)
+      - name: prepare package recipes
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          useradd --create-home builder
+          mkdir -p build/aur
+          chown -R builder:builder build/aur
+          runuser -u builder -- bash scripts/prepare-aur.sh "${TAG#v}" build/release build/aur
+      - name: publish AUR packages
+        env:
+          AUR_KEY: ${{ secrets.AUR_KEY }}
+        run: |
+          umask 077
+          test -n "$AUR_KEY"
+          printf '%s\n' "$AUR_KEY" > "$RUNNER_TEMP/aur_key"
+          trap 'shred -u "$RUNNER_TEMP/aur_key"' EXIT
+          export GIT_SSH_COMMAND="ssh -i $RUNNER_TEMP/aur_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$GITHUB_WORKSPACE/.github/aur_known_hosts"
+          for package in stuff-bin stuff-git; do
+            source="build/aur/$package"
+            directory="$RUNNER_TEMP/$package"
+            git -c init.defaultBranch=master clone --depth=1 --single-branch --no-tags "ssh://aur@aur.archlinux.org/$package.git" "$directory"
+            version=$(awk '$1 == "pkgver" { print $3 }' "$source/.SRCINFO")
+            if [[ -f $directory/.SRCINFO ]]; then
+              current=$(awk '$1 == "pkgver" { print $3 }' "$directory/.SRCINFO")
+              revision=$(awk '$1 == "pkgrel" { print $3 }' "$directory/.SRCINFO")
+              # VCS packages need recipe changes, not release-only version bumps.
+              if [[ $package == stuff-git ]]; then
+                version=$current
+                sed -i "s/^pkgver=.*/pkgver=$version/" "$source/PKGBUILD"
+              fi
+              if (( $(vercmp "$version" "$current") < 0 )); then
+                echo "refusing to downgrade $package from $current to $version" >&2
+                exit 1
+              fi
+              if [[ $version == "$current" ]]; then
+                sed -i "s/^pkgrel=.*/pkgrel=$revision/" "$source/PKGBUILD"
+                if ! cmp -s "$source/PKGBUILD" "$directory/PKGBUILD"; then
+                  sed -i "s/^pkgrel=.*/pkgrel=$((revision + 1))/" "$source/PKGBUILD"
+                fi
+                runuser -u builder -- makepkg --dir "$source" --printsrcinfo > "$source/.SRCINFO"
+              fi
+            fi
+            cp "$source/PKGBUILD" "$source/.SRCINFO" LICENSE "$directory/"
+            git -C "$directory" add PKGBUILD .SRCINFO LICENSE
+            if git -C "$directory" diff --cached --quiet; then
+              echo "$package is current"
+              continue
+            fi
+            git -C "$directory" diff --cached --check
+            git -C "$directory" config user.name hyperpuncher
+            git -C "$directory" config user.email hyperpuncher@users.noreply.github.com
+            git -C "$directory" commit -m "chore: update $package for $GITHUB_REF_NAME"
+            git -C "$directory" push origin HEAD:master
+          done
