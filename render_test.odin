@@ -219,11 +219,11 @@ large_directory_layout :: proc(t: ^testing.T) {
 			   cmd.renderData.rectangle.backgroundColor != theme.selected {continue}
 			box := cmd.boundingBox
 			testing.expect(t, cmd.renderData.rectangle.cornerRadius.topLeft > 0)
-			testing.expect(t, box.height == g.row - 4)
+			testing.expect(t, box.height == g.row - 2)
 			if box.x >= g.sidebar {
 				file_selection = true
 				if b.selected == b.first {
-					testing.expect_value(t, box.y - (g.header + g.row), f32(6))
+					testing.expect_value(t, box.y - (g.header + g.row), f32(5))
 				}
 				testing.expect(t, box.x == g.sidebar + 6 && box.x + box.width == g.width - 7)
 			} else {

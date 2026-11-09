@@ -117,8 +117,8 @@ places_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 							padding = {
 								left = inset,
 								right = right_inset,
-								top = u16(2 * g.scale),
-								bottom = u16(2 * g.scale),
+								top = u16(1.5 * g.scale),
+								bottom = u16(1.5 * g.scale),
 							},
 						},
 					},
