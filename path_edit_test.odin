@@ -157,6 +157,12 @@ verify_path_editor_rendering :: proc(t: ^testing.T, p: ^Painter) {
 	commands := layout(&b, g, p)
 	entry := clay.GetElementData(clay.ID("path-edit"))
 	testing.expect(t, entry.found)
+	testing.expect_value(t, entry.boundingBox.x, entry.boundingBox.y)
+	testing.expect_value(
+		t,
+		g.width - entry.boundingBox.x - entry.boundingBox.width,
+		entry.boundingBox.y,
+	)
 	testing.expect(t, b.header.edit.offset > 0)
 	paint(p, commands, 960, 640)
 	// A pointer drag selects text in the field without changing file selection.

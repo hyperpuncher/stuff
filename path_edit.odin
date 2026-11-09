@@ -36,7 +36,7 @@ path_edit_start :: proc(b: ^Browser) {
 }
 
 path_edit_box :: proc(g: Geometry) -> clay.BoundingBox {
-	return {12 * g.scale, 4 * g.scale, g.width - 24 * g.scale, g.header - 8 * g.scale}
+	return {4 * g.scale, 4 * g.scale, g.width - 8 * g.scale, g.header - 8 * g.scale}
 }
 
 path_edit_boundary :: proc(value: string, cursor: int, forward: bool) -> int {
@@ -77,7 +77,7 @@ path_edit_copy :: proc(b: ^Browser) -> bool {
 
 path_edit_click :: proc(edit: ^Path_Edit, g: Geometry, x: f32, extend: bool) {
 	if edit.font == nil {return}
-	target := x - 20 * g.scale + edit.offset
+	target := x - path_edit_box(g).x - 8 * g.scale + edit.offset
 	cursor, previous_width := 0, f32(0)
 	it := utf8.decode_grapheme_iterator_make(edit.value)
 	for _, cluster in utf8.decode_grapheme_iterate(&it) {
@@ -207,12 +207,7 @@ path_edit_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 	{
 		layout = {
 			sizing = {clay.SizingGrow(), clay.SizingFixed(g.header)},
-			padding = {
-				left = u16(12 * g.scale),
-				right = u16(12 * g.scale),
-				top = u16(4 * g.scale),
-				bottom = u16(4 * g.scale),
-			},
+			padding = clay.PaddingAll(u16(4 * g.scale)),
 		},
 	},
 	) {
