@@ -12,6 +12,7 @@ hover_target :: proc(b: ^Browser, g: Geometry) -> u32 {
 	x, y := b.pointer.x, b.pointer.y
 	if !b.pointer.active || x < 0 || y < 0 || x >= g.width || y >= g.height {return 0}
 	if y < g.header {return header_target(&b.header, x, y)}
+	if places, hit := scrollbar_hit(b, g, x, y); hit {return scrollbar_id(places).id}
 	if x < g.sidebar {
 		index := row_at(places_geometry(g), y, b.places.first, len(b.places.entries))
 		if index >= 0 {
@@ -47,6 +48,9 @@ pointer_move :: proc(b: ^Browser, g: Geometry, x, y: f32) -> bool {
 }
 
 pointer_cursor :: proc(b: ^Browser, g: Geometry) -> sdl.SystemCursor {
+	if b.drag.active ||
+	   b.hovered == scrollbar_id(false).id ||
+	   b.hovered == scrollbar_id(true).id {return .DEFAULT}
 	if b.pointer.active &&
 	   b.hovered != 0 &&
 	   (b.pointer.y < g.header || b.pointer.x < g.sidebar || b.pointer.y < g.header + g.row) {

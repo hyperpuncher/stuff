@@ -224,7 +224,7 @@ large_directory_layout :: proc(t: ^testing.T) {
 				if b.selected == b.first {
 					testing.expect_value(t, box.y - (g.header + g.row), f32(6))
 				}
-				testing.expect(t, box.x == g.sidebar + 6 && box.x + box.width == g.width - 6)
+				testing.expect(t, box.x == g.sidebar + 6 && box.x + box.width == g.width - 7)
 			} else {
 				testing.expect(t, box.x == 6 && box.x + box.width == g.sidebar - 6)
 			}

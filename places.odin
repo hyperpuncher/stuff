@@ -97,6 +97,8 @@ places_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 			if clay.UI(clay.ID("places-viewport"))(viewport_config()) {
 				active := places_active(&b.places, b.path)
 				inset := u16(6 * g.scale)
+				right_inset := inset
+				if len(b.places.entries) > g.rows {right_inset = u16(7 * g.scale)}
 				for i in b.places.first ..< min(b.places.first + g.rows + 1, len(b.places.entries)) {
 					place := b.places.entries[i]
 					if place.section {
@@ -114,7 +116,7 @@ places_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 							sizing = {clay.SizingGrow(), clay.SizingFixed(g.row)},
 							padding = {
 								left = inset,
-								right = inset,
+								right = right_inset,
 								top = u16(2 * g.scale),
 								bottom = u16(2 * g.scale),
 							},
@@ -127,7 +129,7 @@ places_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 								sizing = {clay.SizingGrow(), clay.SizingGrow()},
 								padding = {
 									left = u16(8 * g.scale) - inset,
-									right = u16(8 * g.scale) - inset,
+									right = u16(8 * g.scale) - right_inset,
 								},
 								childGap = u16(8 * g.scale),
 								childAlignment = {y = .Center},

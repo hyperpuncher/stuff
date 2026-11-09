@@ -379,12 +379,7 @@ paint_rounded_rectangle :: proc(
 	color := data.backgroundColor
 	tint := sdl.FColor{color[0] / 255, color[1] / 255, color[2] / 255, color[3] / 255}
 	// A half-pixel fade gives small capsule ends smooth coverage.
-	capsule :=
-		box.width >= box.height &&
-		radii[0] == limit &&
-		radii[1] == limit &&
-		radii[2] == limit &&
-		radii[3] == limit
+	capsule := radii[0] == limit && radii[1] == limit && radii[2] == limit && radii[3] == limit
 	vertices: [73]sdl.Vertex
 	indices: [324]i32
 	vertex_count, index_count := i32(37), i32(108)

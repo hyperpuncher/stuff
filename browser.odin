@@ -37,6 +37,7 @@ Browser :: struct {
 	storage:         ^Storage,
 	space:           Space_Info,
 	pending_disk:    ^Disk_Operation, // Borrowed until the worker returns its result.
+	drag:            Scroll_Drag,
 }
 
 browser_message :: proc(b: ^Browser, message: string) {
@@ -67,7 +68,7 @@ browser_load :: proc(b: ^Browser, path: string) -> os.Error {
 		delete(absolute)
 		return read_err
 	}
-	if b.path != absolute {b.header.copied_until = 0; b.space = {}}
+	if b.path != absolute {b.header.copied_until = 0; b.space = {}; b.drag = {}}
 	os.file_info_slice_delete(b.entries, context.allocator)
 	delete(b.path)
 	b.path, b.entries = absolute, entries

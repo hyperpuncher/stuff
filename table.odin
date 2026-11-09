@@ -157,17 +157,19 @@ table_row :: proc(b: ^Browser, index: int, g: Geometry, p: ^Painter) {
 	}
 	color = hover_color(b, clay.ID("row", u32(source)), color)
 	inset := u16(6 * g.scale)
+	right_inset := inset
+	if len(b.visible) > g.rows {right_inset = u16(7 * g.scale)}
 	inner := row_layout(g)
 	inner.sizing.height = clay.SizingGrow()
 	inner.padding.left -= inset
-	inner.padding.right -= inset
+	inner.padding.right -= right_inset
 	if clay.UI(clay.ID("row", u32(source)))(
 	{
 		layout = {
 			sizing = {clay.SizingGrow(), clay.SizingFixed(g.row)},
 			padding = {
 				left = inset,
-				right = inset,
+				right = right_inset,
 				top = u16(2 * g.scale),
 				bottom = u16(2 * g.scale),
 			},
@@ -248,6 +250,8 @@ layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.Ren
 				}
 			}
 		}
+		scrollbar_layout(b, g, false)
+		scrollbar_layout(b, g, true)
 		if clay.UI(clay.ID("footer"))(
 		{
 			layout = {

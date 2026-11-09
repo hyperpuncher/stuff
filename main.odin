@@ -14,13 +14,18 @@ handle_event :: proc(b: ^Browser, event: ^sdl.Event, g: Geometry, running: ^bool
 	pointer_changed := false
 	#partial switch event.type {
 	case .MOUSE_MOTION:
-		return pointer_move(b, g, event.motion.x, event.motion.y)
+		changed := pointer_move(b, g, event.motion.x, event.motion.y)
+		return scrollbar_motion(b, g, event.motion.y) || changed
 	case .WINDOW_MOUSE_LEAVE, .WINDOW_FOCUS_LOST:
+		cancelled := event.type == .WINDOW_FOCUS_LOST && b.drag.active
+		if cancelled {b.drag = {}}
 		b.pointer.active = false
-		return hover_update(b, g)
+		return hover_update(b, g) || cancelled
 	case .KEY_DOWN:
+		pointer_changed = b.drag.active
+		b.drag = {}
 		b.pointer.active = false
-		pointer_changed = hover_update(b, g)
+		pointer_changed = hover_update(b, g) || pointer_changed
 	case .MOUSE_BUTTON_DOWN:
 		pointer_changed = pointer_move(b, g, event.button.x, event.button.y)
 	case .MOUSE_WHEEL:
@@ -133,7 +138,11 @@ handle_input :: proc(
 		}
 		browser_reveal(b, g.rows)
 		return true, err
+	case .MOUSE_BUTTON_UP:
+		if event.button.button == sdl.BUTTON_LEFT && b.drag.active {b.drag = {}; return true, nil}
+		return false, nil
 	case .MOUSE_WHEEL:
+		b.drag = {}
 		amount := event.wheel.y
 		if event.wheel.direction == .FLIPPED {amount = -amount}
 		x, y := event.wheel.mouse_x, event.wheel.mouse_y
@@ -161,6 +170,10 @@ handle_input :: proc(
 		x, y := event.button.x, event.button.y
 		if x < 0 || x >= g.width {return false, nil}
 		if y >= 0 && y < g.header {return header_click(b, x, y)}
+		if places, hit := scrollbar_hit(b, g, x, y); hit {
+			scrollbar_press(b, g, places, y)
+			return true, nil
+		}
 		if x < g.sidebar {
 			index := row_at(places_geometry(g), y, b.places.first, len(b.places.entries))
 			if index < 0 || b.places.entries[index].section {return false, nil}
