@@ -87,17 +87,15 @@ file_operation_run :: proc(op: ^File_Operation) {
 	   .Open_With {op.error = open_with_run(op); if op.error != "" {op.failed = 1}; return}
 	if op.history != .Record {file_history_run(op); return}
 	if op.kind == .Copy {
-		info, err := os.stat(op.target, context.allocator)
-		if err == nil && info.type != .Directory {err = .Invalid_Path}
+		dir, err := directory_open(op.target)
 		if err != nil {
 			op.failed = len(op.sources)
 			op.error = fmt.aprintf("%s: %s", op.target, os.error_string(err))
-			os.file_info_delete(info, context.allocator)
 			return
 		}
+		defer os.close(dir)
 		delete(op.target)
-		op.target = strings.clone(info.fullpath)
-		os.file_info_delete(info, context.allocator)
+		op.target = strings.clone(os.name(dir))
 	}
 	buffer: []u8
 	if op.kind == .Copy {buffer = make([]u8, 1024 * 1024)}
@@ -209,6 +207,21 @@ file_operation_apply :: proc(b: ^Browser, op: ^File_Operation) -> bool {
 	return true
 }
 
+// One directory-only open also provides its canonical path through os.name.
+// O_DIRECTORY rejects pipes and devices without opening them for data.
+directory_open :: proc(
+	path: string,
+	flags: linux.Open_Flags = {},
+) -> (
+	file: ^os.File,
+	err: os.Error,
+) {
+	path_c := strings.clone_to_cstring(path, context.temp_allocator)
+	fd, open_err := linux.open(path_c, flags | {.DIRECTORY, .NONBLOCK, .CLOEXEC})
+	if open_err != .NONE {return nil, open_err}
+	return os.new_file(uintptr(fd), path), nil
+}
+
 file_rename_new :: proc(source, target: string) -> os.Error {
 	a, z := strings.clone_to_cstring(source), strings.clone_to_cstring(target)
 	defer delete(a)
@@ -274,11 +287,7 @@ file_copy_node :: proc(
 		return os.symlink(link, target)
 	case .Directory:
 		os.make_directory(target, os.perm(0o700)) or_return
-		path_c := strings.clone_to_cstring(source)
-		defer delete(path_c)
-		fd, open_err := linux.open(path_c, {.DIRECTORY, .NOFOLLOW, .CLOEXEC})
-		if open_err != .NONE {return open_err}
-		dir := os.new_file(uintptr(fd), source)
+		dir := directory_open(source, {.NOFOLLOW}) or_return
 		defer os.close(dir)
 		it := os.read_directory_iterator_create(dir)
 		defer os.read_directory_iterator_destroy(&it)

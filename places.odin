@@ -33,14 +33,15 @@ places_add :: proc(p: ^Places, place: Place) {
 		)
 		return
 	}
-	path, err := os.get_absolute_path(place.path, context.allocator)
+	dir, err := directory_open(place.path)
 	if err != nil {return}
-	if !os.is_dir(path) {delete(path); return}
+	defer os.close(dir)
+	path := os.name(dir)
 	for existing in p.entries {
-		if existing.path == path {delete(path); return}
+		if existing.path == path {return}
 	}
 	owned := place
-	owned.label, owned.path = strings.clone(place.label), path
+	owned.label, owned.path = strings.clone(place.label), strings.clone(path)
 	append(&p.entries, owned)
 }
 

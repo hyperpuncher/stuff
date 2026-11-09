@@ -94,7 +94,7 @@ trash_read_root :: proc(
 	buffer: [65536]u8
 	for child in os.read_directory_iterator(&it) {
 		if sync.atomic_load(&op.cancel) {break}
-		meta_name := strings.clone_to_cstring(fmt.tprintf("%s.trashinfo", child.name))
+		meta_name := fmt.caprintf("%s.trashinfo", child.name)
 		meta, meta_err := linux.openat(infos, meta_name, {.NOFOLLOW, .NONBLOCK, .CLOEXEC})
 		delete(meta_name)
 		if meta_err != .NONE {continue}
@@ -111,8 +111,8 @@ trash_read_root :: proc(
 		if read_err != nil || n == len(buffer) {continue}
 		original, valid := trash_original_path(string(buffer[:n]), top, local)
 		if !valid {continue}
-		info, stat_err := os.lstat(child.fullpath, context.allocator)
-		if stat_err != nil {delete(original); continue}
+		info, clone_err := os.file_info_clone(child, context.allocator)
+		if clone_err != nil {delete(original); continue}
 		_, info.name = os.split_path(original)
 		record := File_Change {
 			path       = original,

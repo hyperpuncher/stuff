@@ -4,6 +4,7 @@ import "core:c"
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import linux "core:sys/linux"
 import sdl "vendor:sdl3"
 
 File_Open :: struct {
@@ -13,19 +14,19 @@ File_Open :: struct {
 
 file_open :: proc(b: ^Browser, path: string) {
 	browser_message(b, "")
-	info, err := os.stat(path, context.allocator)
-	if err != nil {
+	cpath := strings.clone_to_cstring(path)
+	defer delete(cpath)
+	info: linux.Stat
+	err := linux.stat(cpath, &info)
+	if err != .NONE {
 		browser_message(b, fmt.tprintf("cannot open %s: %v", os.base(path), err))
 		return
 	}
-	defer os.file_info_delete(info, context.allocator)
-	if info.type != .Regular {
+	if info.mode & linux.S_IFMT != linux.S_IFREG {
 		browser_message(b, fmt.tprintf("cannot open %s: not a regular file", os.base(path)))
 		return
 	}
 
-	cpath := strings.clone_to_cstring(path)
-	defer delete(cpath)
 	args := [?]cstring{"xdg-open", cpath, nil}
 	process := sdl.CreateProcess(raw_data(args[:]), false)
 	if process == nil {

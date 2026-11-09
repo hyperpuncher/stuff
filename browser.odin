@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:os"
 import "core:slice"
 import "core:strings"
+import linux "core:sys/linux"
 import "core:time"
 import "core:unicode/utf8"
 
@@ -96,12 +97,10 @@ browser_load :: proc(b: ^Browser, path: string) -> os.Error {
 		storage_path(b.storage, "")
 		return nil
 	}
-	absolute := os.get_absolute_path(path, context.allocator) or_return
-	entries, read_err := os.read_all_directory_by_path(absolute, context.allocator)
-	if read_err != nil {
-		delete(absolute)
-		return read_err
-	}
+	dir := directory_open(path) or_return
+	defer os.close(dir)
+	entries := os.read_all_directory(dir, context.allocator) or_return
+	absolute := strings.clone(os.name(dir))
 	if b.path != absolute {search_reset(b); b.header.copied_until = 0; b.space = {}; b.drag = {}}
 	b.menu.active = false
 	os.file_info_slice_delete(b.entries, context.allocator)
@@ -140,9 +139,10 @@ browser_sort :: proc(b: ^Browser) {
 			b := cast(^Browser)data
 			a, z := b.entries[i], b.entries[j]
 			if (a.type == .Directory) != (z.type == .Directory) {return a.type == .Directory}
-			order := slice.cmp(a.name, z.name)
+			order: slice.Ordering
 			switch b.sort_column {
 			case .Name:
+				order = slice.cmp(a.name, z.name)
 			case .Size:
 				// Non-regular entries have no displayed size and sort before files.
 				a_size := a.type == .Regular ? max(0, a.size) : -1
@@ -305,13 +305,19 @@ browser_parent :: proc(b: ^Browser) -> os.Error {
 browser_enter :: proc(b: ^Browser) -> os.Error {
 	if len(b.visible) == 0 {return nil}
 	entry := b.entries[b.visible[b.selected]]
-	if b.path == TRASH_PATH &&
-	   (entry.type == .Directory || entry.type == .Symlink && os.is_dir(entry.fullpath)) {
+	is_directory := entry.type == .Directory
+	if entry.type == .Symlink {
+		path := strings.clone_to_cstring(entry.fullpath, context.temp_allocator)
+		info: linux.Stat
+		is_directory =
+			linux.stat(path, &info) == .NONE && info.mode & linux.S_IFMT == linux.S_IFDIR
+	}
+	if b.path == TRASH_PATH && is_directory {
 		browser_message(b, "restore this folder to browse it")
 		return nil
 	}
 	// Directory symlinks are followed only when the user opens them.
-	if entry.type == .Directory || (entry.type == .Symlink && os.is_dir(entry.fullpath)) {
+	if is_directory {
 		return browser_navigate(b, entry.fullpath)
 	}
 	file_open(b, entry.fullpath)

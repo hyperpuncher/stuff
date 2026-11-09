@@ -2,11 +2,15 @@ package main
 
 import "core:fmt"
 import "core:os"
+import "core:strings"
+import linux "core:sys/linux"
 import "core:testing"
+import "core:time"
 import sdl "vendor:sdl3"
 
 @(test)
 browse_real_directory :: proc(t: ^testing.T) {
+	testing.set_fail_timeout(t, 3 * time.Second)
 	root, err := os.make_directory_temp("/tmp", "stuff-test-", context.allocator)
 	testing.expect(t, err == nil)
 	defer delete(root)
@@ -72,6 +76,18 @@ browse_real_directory :: proc(t: ^testing.T) {
 	testing.expect_value(t, b.path, root)
 	testing.expect_value(t, len(b.visible), 2)
 	testing.expect_value(t, b.visible_bytes, i64(5))
+	// Special nodes must be rejected without waiting for a FIFO writer.
+	pipe := fmt.caprintf("%s/pipe", root)
+	defer delete(pipe)
+	testing.expect(
+		t,
+		linux.mknod(pipe, linux.S_IFIFO | transmute(linux.Mode)u32(0o600), 0) == .NONE,
+	)
+	testing.expect(t, browser_load(&b, string(pipe)) != nil)
+	testing.expect_value(t, b.path, root)
+	file_open(&b, string(pipe))
+	testing.expect_value(t, len(b.opens), 0)
+	testing.expect(t, strings.has_suffix(b.status_error, "not a regular file"))
 }
 
 @(test)
