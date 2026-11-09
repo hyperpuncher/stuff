@@ -432,7 +432,12 @@ native_wayland_file_drag :: proc(t: ^testing.T) {
 	)
 	testing.expect(t, read_err == nil)
 	received_paths, valid := file_uri_paths(string(received), false)
-	testing.expect(t, valid && len(received_paths) == 2)
+	first, second := false, false
+	for path in received_paths {
+		first = first || path == fmt.tprintf("%s/source.txt", files)
+		second = second || path == fmt.tprintf("%s/source two.txt", files)
+	}
+	testing.expect(t, valid && len(received_paths) == 2 && first && second)
 	file_paths_destroy(received_paths)
 	delete(received)
 	// Now a separate client starts a drag into this client's folder.

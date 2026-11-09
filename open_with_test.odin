@@ -1,6 +1,5 @@
 package main
 
-import "core:c"
 import "core:fmt"
 import "core:mem"
 import "core:os"
@@ -38,37 +37,10 @@ chooser_test_worker :: proc(data: rawptr) {
 application_chooser_uses_private_bus_fd_and_explicit_choice :: proc(t: ^testing.T) {
 	if !sdl.Init({.EVENTS}) {testing.fail_now(t, string(sdl.GetError()))}
 	defer sdl.Quit()
-	assert(dbus_threads_init_default() != 0)
-	args := [?]cstring{"dbus-daemon", "--session", "--nofork", "--print-address=1", nil}
-	process := sdl.CreateProcess(raw_data(args[:]), true)
-	if process == nil {testing.fail_now(t, "tests require dbus-daemon")}
-	defer {
-		_ = sdl.KillProcess(process, true)
-		code: c.int
-		_ = sdl.WaitProcess(process, true, &code)
-		sdl.DestroyProcess(process)
-	}
-	output: [dynamic]u8
-	defer delete(output)
-	deadline := sdl.GetTicks() + 3000
-	for sdl.GetTicks() < deadline && !strings.contains(string(output[:]), "\n") {
-		buffer: [512]u8
-		n := sdl.ReadIO(sdl.GetProcessOutput(process), &buffer[0], len(buffer))
-		append(&output, ..buffer[:n])
-		time.sleep(time.Millisecond)
-	}
-	address := strings.clone_to_cstring(strings.trim_space(string(output[:])))
-	defer delete(address)
-	server := dbus_connection_open_private(address, nil)
-	if server == nil {testing.fail_now(t, "cannot open test bus")}
-	defer {dbus_connection_close(server); dbus_connection_unref(server)}
-	testing.expect(t, dbus_bus_register(server, nil) != 0)
-	dbus_connection_set_exit_on_disconnect(server, 0)
-	testing.expect_value(
-		t,
-		dbus_bus_request_name(server, "org.freedesktop.portal.Desktop", 4, nil),
-		c.int(1),
-	)
+	fixture, ok := test_bus_start("org.freedesktop.portal.Desktop")
+	if !ok {testing.fail_now(t, "cannot start private chooser test bus")}
+	defer test_bus_destroy(fixture)
+	server, address := fixture.connection, fixture.address
 	root, err := os.make_directory_temp("/tmp", "stuff-chooser-", context.allocator)
 	if err != nil {testing.fail_now(t, "cannot create chooser fixture")}
 	defer delete(root)
@@ -100,7 +72,7 @@ application_chooser_uses_private_bus_fd_and_explicit_choice :: proc(t: ^testing.
 		worker := thread.create_and_start_with_data(&job, chooser_test_worker)
 		if worker == nil {testing.fail_now(t, "cannot start chooser test")}
 		acted := false
-		deadline = sdl.GetTicks() + 3000
+		deadline := sdl.GetTicks() + 3000
 		for sdl.GetTicks() < deadline && !sync.atomic_load(&job.done) {
 			_ = dbus_connection_read_write(server, 0)
 			for {

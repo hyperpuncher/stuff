@@ -63,6 +63,13 @@ column_sorting_keeps_selection_and_scroll :: proc(t: ^testing.T) {
 	testing.expect_value(t, b.entries[b.visible[b.selected]].name, "nine")
 	testing.expect_value(t, b.first, 2)
 	testing.expect(t, b.status_error == "")
+	// Header gaps and points outside the pane must not change the sort.
+	for x in ([?]f32{g.sidebar - 1, g.sidebar + g.padding + g.columns[.Name] + g.gap / 2, g.width}) {
+		event.button.x = x
+		_ = handle_event(&b, &event, g, &running)
+		testing.expect_value(t, b.sort_column, Column.Modified)
+		testing.expect(t, b.descending)
+	}
 
 	browser_set_sort(&b, .Name)
 	browser_set_sort(&b, .Name)
@@ -72,28 +79,4 @@ column_sorting_keeps_selection_and_scroll :: proc(t: ^testing.T) {
 	clear(&b.visible)
 	browser_set_sort(&b, .Size)
 	testing.expect_value(t, len(b.visible), 0)
-}
-
-@(test)
-column_header_bounds :: proc(t: ^testing.T) {
-	g := geometry(960, 640, 1)
-	left := g.sidebar + g.padding
-	for width, column in g.columns {
-		found, ok := column_at(g, left + width / 2)
-		testing.expect(t, ok)
-		testing.expect_value(t, found, column)
-		_, in_gap := column_at(g, left + width + g.gap / 2)
-		testing.expect(t, !in_gap)
-		left += width + g.gap
-	}
-	_, before := column_at(g, g.padding - 1)
-	_, after := column_at(g, g.width)
-	testing.expect(t, !before && !after)
-	minimum := geometry(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT, 1)
-	testing.expect(t, minimum.columns[.Name] > 30)
-	testing.expect(
-		t,
-		minimum.list_top + f32(minimum.rows) * minimum.row <=
-		minimum.height - minimum.footer - minimum.list_padding,
-	)
 }

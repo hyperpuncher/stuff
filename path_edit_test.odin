@@ -220,7 +220,7 @@ verify_path_editor_rendering :: proc(t: ^testing.T, p: ^Painter) {
 
 	path_edit_start(&b)
 	text_edit.perform_command(&b.header.edit.text, .Select_All)
-	path_edit_replace(&b, "/home/igor")
+	path_edit_replace(&b, "/home/user")
 	origin: clay.BoundingBox
 	for cursor in 0 ..= len(strings.to_string(b.header.edit.buffer)) {
 		b.header.edit.text.selection[0], b.header.edit.text.selection[1] = cursor, cursor

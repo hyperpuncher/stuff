@@ -39,7 +39,7 @@ drag_offer_destroy :: proc(d: ^File_Drag, offer: ^Drag_Offer) {
 	if offer == nil {return}
 	if d.current == offer {d.current = nil}
 	wl_request_destroy(offer.object, 2)
-	for existing, i in d.offers {if existing == offer {ordered_remove(&d.offers, i); break}}
+	for existing, i in d.offers {if existing == offer {unordered_remove(&d.offers, i); break}}
 	free(offer)
 }
 

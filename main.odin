@@ -232,7 +232,7 @@ handle_input :: proc(
 		if index < 0 {return false, nil}
 		b.places.focused = false
 		mods := sdl.GetModState()
-		file_drag_press(b, g, index, event, mods)
+		file_drag_press(b, index, event, mods)
 		if event.button.clicks == 2 &&
 		   mods & (sdl.KMOD_CTRL | sdl.KMOD_SHIFT) == {} {err = browser_enter(b)}
 		return true, err
@@ -387,12 +387,6 @@ run :: proc() -> int {
 				scale,
 				font_points * (96.0 / 72.0),
 				f32(ttf.GetFontHeight(font)) / scale,
-			)
-			b.first = clamp(b.first, 0, max(0, len(b.visible) - g.rows))
-			b.places.first = clamp(
-				b.places.first,
-				0,
-				max(0, len(b.places.entries) - places_geometry(g).rows),
 			)
 			commands := layout(&b, g, &painter)
 			if hover_update(&b, g) {commands = layout(&b, g, &painter)}

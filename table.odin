@@ -219,6 +219,11 @@ table_row :: proc(b: ^Browser, index: int, g: Geometry, p: ^Painter) {
 
 layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.RenderCommand) {
 	b.first = clamp(b.first, 0, max(0, len(b.visible) - g.rows))
+	b.places.first = clamp(
+		b.places.first,
+		0,
+		max(0, len(b.places.entries) - places_geometry(g).rows),
+	)
 	clay.SetLayoutDimensions({g.width, g.height})
 	clay.BeginLayout()
 	if clay.UI(clay.ID("window"))(

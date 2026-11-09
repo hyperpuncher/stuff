@@ -21,42 +21,56 @@ foreign test_dbus_lib {
 	dbus_message_iter_next :: proc(iter: ^Bus_Iter) -> u32 ---
 }
 
-@(test)
-udisks_calls_use_an_isolated_bus :: proc(t: ^testing.T) {
-	if !sdl.Init({.EVENTS}) {testing.fail_now(t, string(sdl.GetError()))}
-	defer sdl.Quit()
-	assert(dbus_threads_init_default() != 0)
+Test_Bus :: struct {
+	process:    ^sdl.Process,
+	connection: ^Bus,
+	address:    cstring,
+}
+
+test_bus_start :: proc(service: cstring) -> (fixture: Test_Bus, ok: bool) {
+	defer if !ok {test_bus_destroy(fixture)}
+	if dbus_threads_init_default() == 0 {return}
 	args := [?]cstring{"dbus-daemon", "--session", "--nofork", "--print-address=1", nil}
-	process := sdl.CreateProcess(raw_data(args[:]), true)
-	if process == nil {testing.fail_now(t, "tests require dbus-daemon")}
-	defer {
-		_ = sdl.KillProcess(process, true)
-		code: c.int
-		_ = sdl.WaitProcess(process, true, &code)
-		sdl.DestroyProcess(process)
-	}
+	fixture.process = sdl.CreateProcess(raw_data(args[:]), true)
+	if fixture.process == nil {return}
 	output: [dynamic]u8
 	defer delete(output)
 	deadline := sdl.GetTicks() + 3000
 	for sdl.GetTicks() < deadline && !strings.contains(string(output[:]), "\n") {
 		buffer: [512]u8
-		n := sdl.ReadIO(sdl.GetProcessOutput(process), &buffer[0], len(buffer))
+		n := sdl.ReadIO(sdl.GetProcessOutput(fixture.process), &buffer[0], len(buffer))
 		append(&output, ..buffer[:n])
 		time.sleep(time.Millisecond)
 	}
-	address := strings.clone_to_cstring(strings.trim_space(string(output[:])))
-	defer delete(address)
-	if len(output) == 0 {testing.fail_now(t, "private test bus did not start")}
-	server := dbus_connection_open_private(address, nil)
-	if server == nil {testing.fail_now(t, "cannot connect to private test bus")}
-	defer {dbus_connection_close(server); dbus_connection_unref(server)}
-	testing.expect(t, dbus_bus_register(server, nil) != 0)
-	dbus_connection_set_exit_on_disconnect(server, 0)
-	testing.expect_value(
-		t,
-		dbus_bus_request_name(server, "org.freedesktop.UDisks2", 4, nil),
-		c.int(1),
-	)
+	if !strings.contains(string(output[:]), "\n") {return}
+	fixture.address = strings.clone_to_cstring(strings.trim_space(string(output[:])))
+	fixture.connection = dbus_connection_open_private(fixture.address, nil)
+	if fixture.connection == nil {return}
+	dbus_connection_set_exit_on_disconnect(fixture.connection, 0)
+	if dbus_bus_register(fixture.connection, nil) == 0 {return}
+	ok = dbus_bus_request_name(fixture.connection, service, 4, nil) == 1
+	return
+}
+
+test_bus_destroy :: proc(fixture: Test_Bus) {
+	if fixture.connection !=
+	   nil {dbus_connection_close(fixture.connection); dbus_connection_unref(fixture.connection)}
+	if fixture.process != nil {
+		_ = sdl.KillProcess(fixture.process, true)
+		_ = sdl.WaitProcess(fixture.process, true, nil)
+		sdl.DestroyProcess(fixture.process)
+	}
+	delete(fixture.address)
+}
+
+@(test)
+udisks_calls_use_an_isolated_bus :: proc(t: ^testing.T) {
+	if !sdl.Init({.EVENTS}) {testing.fail_now(t, string(sdl.GetError()))}
+	defer sdl.Quit()
+	fixture, ok := test_bus_start("org.freedesktop.UDisks2")
+	if !ok {testing.fail_now(t, "cannot start private UDisks test bus")}
+	defer test_bus_destroy(fixture)
+	server, address := fixture.connection, fixture.address
 
 	for scenario in 0 ..< 3 {
 		op := new(Disk_Operation)
@@ -71,7 +85,7 @@ udisks_calls_use_an_isolated_bus :: proc(t: ^testing.T) {
 		}
 		defer disk_call_destroy(&call)
 		disk_call_start(&call, op)
-		deadline = sdl.GetTicks() + 3000
+		deadline := sdl.GetTicks() + 3000
 		resolved, acted, done := false, false, false
 		for sdl.GetTicks() < deadline && !done {
 			_ = dbus_connection_read_write(server, 0)

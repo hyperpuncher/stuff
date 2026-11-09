@@ -16,24 +16,23 @@ Drag_Source :: struct {
 	event:                  sdl.EventType,
 	worker:                 ^thread.Thread,
 	jobs:                   [dynamic]^Drag_IO,
-	finished:               bool, // Worker-owned, like jobs and the Wayland source proxy.
-	cancel, done:           bool, // Atomic. Main joins before freeing the snapshot.
+	stop, done:             bool, // Atomic. Main joins before freeing the snapshot.
 }
 
 drag_source_target :: proc "c" (data: rawptr, source: ^WL_Object, mime: cstring) {}
 drag_source_action :: proc "c" (data: rawptr, source: ^WL_Object, action: u32) {}
 drag_source_performed :: proc "c" (data: rawptr, source: ^WL_Object) {}
-drag_source_done :: proc "c" (
-	data: rawptr,
-	source: ^WL_Object,
-) {(cast(^Drag_Source)data).finished = true}
+drag_source_done :: proc "c" (data: rawptr, source: ^WL_Object) {
+	state := cast(^Drag_Source)data
+	sync.atomic_store(&state.stop, true)
+}
 
 drag_source_send :: proc "c" (data: rawptr, object: ^WL_Object, mime: cstring, fd: i32) {
 	source := cast(^Drag_Source)data
 	context = runtime.default_context()
 	context.allocator = source.allocator
 	if string(mime) != FILE_URI_MIME {linux.close(linux.Fd(fd)); return}
-	_ = drag_io_start(&source.jobs, source.allocator, source.event, linux.Fd(fd), source.payload)
+	_ = drag_io_start(&source.jobs, linux.Fd(fd), source.payload)
 }
 DRAG_SOURCE_LISTENER := [6]rawptr {
 	rawptr(drag_source_target),
@@ -99,7 +98,7 @@ drag_source_worker :: proc(data: rawptr) {
 		}
 		_ = sdl.PushEvent(&event)
 	}
-	for !source.finished && !sync.atomic_load(&source.cancel) {
+	for !sync.atomic_load(&source.stop) {
 		timeout := linux.Time_Spec {
 			time_nsec = 100_000_000,
 		}
@@ -109,7 +108,7 @@ drag_source_worker :: proc(data: rawptr) {
 
 drag_source_destroy :: proc(source: ^Drag_Source) {
 	if source == nil {return}
-	sync.atomic_store(&source.cancel, true)
+	sync.atomic_store(&source.stop, true)
 	thread.destroy(source.worker)
 	delete(source.payload)
 	free(source)

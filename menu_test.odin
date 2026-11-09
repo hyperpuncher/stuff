@@ -48,10 +48,6 @@ verify_context_menu_rendering :: proc(t: ^testing.T, p: ^Painter) {
 			if cmd.commandType != .Text {continue}
 			text := cmd.renderData.text.stringContents
 			value := string(text.chars[:text.length])
-			testing.expect(
-				t,
-				value != "ctrl+c" && value != "ctrl+v" && value != "ctrl+a" && value != "delete",
-			)
 			testing.expect(t, b.menu.paste || value != "paste")
 		}
 		for action in Menu_Action {

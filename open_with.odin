@@ -75,7 +75,7 @@ chooser_wait :: proc(op: ^File_Operation, bus: ^Bus, fd: linux.Fd, writable: boo
 	if random_error != .NONE ||
 	   n != len(random) {return strings.clone("cannot create application chooser token")}
 	words := transmute([2]u64)random
-	token := strings.clone_to_cstring(fmt.tprintf("stuff_%016x%016x", words[0], words[1]))
+	token := fmt.caprintf("stuff_%016x%016x", words[0], words[1])
 	defer delete(token)
 	state := Chooser_Response {
 		handle = chooser_handle(bus, token),
@@ -138,7 +138,7 @@ open_with_run :: proc(op: ^File_Operation) -> string {
 	if err = linux.fstat(original, &st); err != .NONE {return strings.clone(os.error_string(err))}
 	if st.mode & linux.S_IFMT != linux.S_IFREG {return strings.clone("choose a regular file")}
 	// Reopen the verified object, not a pathname that could now name a device.
-	fd_path := strings.clone_to_cstring(fmt.tprintf("/proc/self/fd/%d", original))
+	fd_path := fmt.caprintf("/proc/self/fd/%d", original)
 	defer delete(fd_path)
 	fd, open_err := linux.open(fd_path, {.RDWR, .NONBLOCK, .CLOEXEC})
 	writable := open_err == .NONE

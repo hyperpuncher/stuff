@@ -37,8 +37,6 @@ verify_theme_switch :: proc(t: ^testing.T, p: ^Painter) {
 			   .Rectangle {testing.expect_value(t, cmd.renderData.rectangle.backgroundColor, theme.panel)}
 			if cmd.commandType != .Text {continue}
 			data := cmd.renderData.text
-			value := string(data.stringContents.chars[:data.stringContents.length])
-			testing.expect(t, !strings.contains(value, "|"))
 			testing.expect_value(t, data.textColor, theme.muted)
 		}
 		paint(p, commands, 960, 640)

@@ -70,7 +70,7 @@ trash_local_open :: proc(top: string) -> (linux.Fd, os.Error) {
 			if user, err := trash_private_at(shared, name); err == nil {return user, nil}
 		}
 	}
-	name := strings.clone_to_cstring(fmt.tprintf(".Trash-%s", uid))
+	name := fmt.caprintf(".Trash-%s", uid)
 	defer delete(name)
 	return trash_private_at(fd, name)
 }
@@ -162,7 +162,7 @@ trash_file :: proc(source, home: string, mounts: []Mount, record: ^File_Change =
 		base := fmt.tprintf("stuff-%d-%d-%d", linux.getpid(), now, i)
 		base_c := strings.clone_to_cstring(base)
 		defer delete(base_c)
-		info_c := strings.clone_to_cstring(fmt.tprintf("%s.trashinfo", base))
+		info_c := fmt.caprintf("%s.trashinfo", base)
 		defer delete(info_c)
 		fd, open_err := linux.openat(
 			infos,

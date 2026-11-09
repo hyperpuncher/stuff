@@ -10,10 +10,10 @@ path_editor_word_delete_preserves_undo_selection :: proc(t: ^testing.T) {
 	for item in ([?]struct {
 			selection: [2]int,
 			expected:  string,
-		}{{{20, 20}, "/home/igor/"}, {{6, 1}, "/igor/Downloads"}}) {
+		}{{{20, 20}, "/home/user/"}, {{6, 1}, "/user/Downloads"}}) {
 		b: Browser
 		defer browser_destroy(&b)
-		b.path = strings.clone("/home/igor/Downloads")
+		b.path = strings.clone("/home/user/Downloads")
 		path_edit_start(&b)
 		b.header.edit.text.selection = item.selection
 		g, running := geometry(960, 640, 1), true
@@ -47,9 +47,9 @@ path_editor_word_shortcuts :: proc(t: ^testing.T) {
 		expected:         string,
 		position, anchor: int,
 	} {
-		{"/home/igor/Downloads", 20, sdl.K_BACKSPACE, false, "/home/igor/", 11, 11},
-		{"/home/igor/Downloads", 11, sdl.K_LEFT, false, "/home/igor/Downloads", 6, 6},
-		{"/home/igor/Downloads", 11, sdl.K_DELETE, false, "/home/igor/", 11, 11},
+		{"/home/user/Downloads", 20, sdl.K_BACKSPACE, false, "/home/user/", 11, 11},
+		{"/home/user/Downloads", 11, sdl.K_LEFT, false, "/home/user/Downloads", 6, 6},
+		{"/home/user/Downloads", 11, sdl.K_DELETE, false, "/home/user/", 11, 11},
 		{"alpha beta.txt", 14, sdl.K_BACKSPACE, false, "alpha beta.", 11, 11},
 		{"alpha beta.txt", 14, sdl.K_LEFT, true, "alpha beta.txt", 11, 14},
 		{"alpha beta.txt", 6, sdl.K_RIGHT, true, "alpha beta.txt", 10, 6},

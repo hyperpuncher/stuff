@@ -111,16 +111,20 @@ header_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 		return
 	}
 	available := g.width - 2 * f32(u16(12 * g.scale)) - f32(u16(8 * g.scale)) - 28 * g.scale
-	labels := make([]string, len(h.crumbs), context.temp_allocator)
+	labels := make([]struct {
+			value: string,
+			width: f32,
+		}, len(h.crumbs), context.temp_allocator)
 	content_width := f32(max(0, len(h.crumbs) - 1)) * (18 * g.scale + 2 * f32(u16(2 * g.scale)))
 	for crumb, i in h.crumbs {
-		labels[i] = fit_label(
+		labels[i].value = fit_label(
 			p.font,
 			h.path[crumb.start:crumb.end],
 			available - 12 * g.scale,
 			middle = true,
 		)
-		content_width += f32(text_width(p.font, labels[i])) + 12 * g.scale
+		labels[i].width = f32(text_width(p.font, labels[i].value)) + 12 * g.scale
+		content_width += labels[i].width
 	}
 	view_width := min(content_width, available)
 	if clay.UI()(
@@ -144,7 +148,7 @@ header_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 			clip = {horizontal = true, childOffset = {-max(0, content_width - view_width), 0}},
 		},
 		) {
-			for value, i in labels {
+			for item, i in labels {
 				if i > 0 {icon_element(p, .ChevronRight, g.scale)}
 				color := theme.muted
 				if i == len(h.crumbs) - 1 {color = theme.text}
@@ -152,7 +156,7 @@ header_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 				{
 					layout = {
 						sizing = {
-							clay.SizingFixed(f32(text_width(p.font, value)) + 12 * g.scale),
+							clay.SizingFixed(item.width),
 							clay.SizingFixed(g.header - 8 * g.scale),
 						},
 						padding = {left = u16(6 * g.scale), right = u16(6 * g.scale)},
@@ -161,7 +165,7 @@ header_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 					backgroundColor = hover_color(b, clay.ID("crumb", u32(i)), {}),
 					cornerRadius = clay.CornerRadiusAll(5 * g.scale),
 				},
-				) {label(value, color, g.font_size)}
+				) {label(item.value, color, g.font_size)}
 			}
 		}
 		if clay.UI(clay.ID("copy_path"))(

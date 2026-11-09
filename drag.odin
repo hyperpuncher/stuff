@@ -57,13 +57,7 @@ file_drag_cancel_press :: proc(b: ^Browser) {
 	if b.file_drag != nil && b.file_drag.source == nil {file_drag_disarm(b.file_drag)}
 }
 
-file_drag_press :: proc(
-	b: ^Browser,
-	g: Geometry,
-	index: int,
-	event: ^sdl.Event,
-	mods: sdl.Keymod,
-) {
+file_drag_press :: proc(b: ^Browser, index: int, event: ^sdl.Event, mods: sdl.Keymod) {
 	d := b.file_drag
 	marked := b.marks[b.visible[index]]
 	ctrl, shift := mods & sdl.KMOD_CTRL != {}, mods & sdl.KMOD_SHIFT != {}
@@ -109,16 +103,15 @@ file_drag_motion :: proc(b: ^Browser, g: Geometry, x, y: f32) -> bool {
 	return true
 }
 
-file_drop_start :: proc(b: ^Browser, paths: [dynamic]string, target: string) -> bool {
+file_drop_start :: proc(b: ^Browser, paths: [dynamic]string, target: string) {
 	if b.pending_files != nil || b.storage == nil || target == "" || target == TRASH_PATH {
 		file_paths_destroy(paths)
 		browser_message(b, "cannot copy dropped files here")
-		return false
+		return
 	}
 	op := new(File_Operation)
 	op.kind, op.sources, op.target = .Copy, paths, strings.clone(target)
-	if !file_operation_launch(b, op) {file_operation_destroy(op); return false}
-	return true
+	if !file_operation_launch(b, op) {file_operation_destroy(op)}
 }
 
 // SDL owns offer negotiation, URI decoding and drop completion. No second
@@ -148,7 +141,7 @@ file_drop_input :: proc(b: ^Browser, event: ^sdl.Event, g: Geometry) -> bool {
 	case .DROP_COMPLETE:
 		paths := d.drop_paths
 		d.drop_paths = nil
-		if d.invalid_drop {file_paths_destroy(paths); browser_message(b, "the drop must contain local files")} else if len(paths) > 0 {_ = file_drop_start(b, paths, d.drop_target)}
+		if d.invalid_drop {file_paths_destroy(paths); browser_message(b, "the drop must contain local files")} else if len(paths) > 0 {file_drop_start(b, paths, d.drop_target)}
 		delete(d.drop_target)
 		d.drop_target = ""
 		delete(d.target)

@@ -3,26 +3,23 @@ package main
 import "core:fmt"
 import "core:os"
 import "core:strings"
-import "core:sync"
 import linux "core:sys/linux"
 import "core:testing"
+import "core:thread"
 import "core:time"
 import sdl "vendor:sdl3"
 
 @(test)
-drag_pipe_transfers_handle_backpressure_and_closed_receivers :: proc(t: ^testing.T) {
-	if !sdl.Init({.EVENTS}) {testing.fail_now(t, string(sdl.GetError()))}
-	defer sdl.Quit()
+drag_pipe_transfers_handle_backpressure_and_cancellation :: proc(t: ^testing.T) {
+	payload := strings.repeat("file:///tmp/large%20drag\r\n", 50_000)
+	defer delete(payload)
 	jobs: [dynamic]^Drag_IO
 	defer {for job in jobs {drag_io_destroy(job)}; delete(jobs)}
-	event := sdl.EventType(sdl.RegisterEvents(1))
 	fds: [2]linux.Fd
 	testing.expect(t, linux.pipe2(&fds, {.CLOEXEC, .NONBLOCK}) == .NONE)
 	reader := fds[0]
 	defer linux.close(reader)
-	payload := strings.repeat("file:///tmp/large%20drag\r\n", 50_000)
-	defer delete(payload)
-	testing.expect(t, drag_io_start(&jobs, context.allocator, event, fds[1], payload))
+	testing.expect(t, drag_io_start(&jobs, fds[1], payload))
 	received: [dynamic]u8
 	defer delete(received)
 	buffer: [16384]u8
@@ -34,18 +31,35 @@ drag_pipe_transfers_handle_backpressure_and_closed_receivers :: proc(t: ^testing
 		   .NONE {append(&received, ..buffer[:n])} else if err == .EAGAIN {time.sleep(time.Millisecond)} else {testing.expect(t, false, "cannot read drag pipe"); break}
 	}
 	testing.expect_value(t, string(received[:]), payload)
-	for !sync.atomic_load(&jobs[0].done) &&
-	    sdl.GetTicks() < deadline {time.sleep(time.Millisecond)}
-	testing.expect(t, sync.atomic_load(&jobs[0].done))
-	testing.expect_value(t, jobs[0].error, linux.Errno.NONE)
+	for !thread.is_done(jobs[0].worker) && sdl.GetTicks() < deadline {time.sleep(time.Millisecond)}
+	testing.expect(t, thread.is_done(jobs[0].worker))
+	// No reader drains this pipe. A large transfer must remain cancellable.
+	testing.expect(t, linux.pipe2(&fds, {.CLOEXEC, .NONBLOCK}) == .NONE)
+	blocked_reader := fds[0]
+	defer linux.close(blocked_reader)
+	testing.expect(t, drag_io_start(&jobs, fds[1], payload))
+	ready := [1]linux.Poll_Fd{{fd = blocked_reader, events = {.IN}}}
+	count, wait_err := linux.poll(ready[:], 3000)
+	testing.expect(t, wait_err == .NONE && count == 1)
+	job := pop(&jobs)
+	testing.expect(t, !thread.is_done(job.worker))
+	drag_io_destroy(job)
+	partial := 0
+	for {
+		n, err := linux.read(blocked_reader, buffer[:])
+		testing.expect(t, err == .NONE)
+		if err != .NONE || n == 0 {break}
+		partial += n
+	}
+	testing.expect(t, partial > 0 && partial < len(payload))
+	// A receiver can disappear without SIGPIPE terminating the process.
 	testing.expect(t, linux.pipe2(&fds, {.CLOEXEC, .NONBLOCK}) == .NONE)
 	linux.close(fds[0])
-	testing.expect(t, drag_io_start(&jobs, context.allocator, event, fds[1], payload))
-	job := jobs[len(jobs) - 1]
+	testing.expect(t, drag_io_start(&jobs, fds[1], payload))
+	job = jobs[len(jobs) - 1]
 	deadline = sdl.GetTicks() + 3000
-	for !sync.atomic_load(&job.done) && sdl.GetTicks() < deadline {time.sleep(time.Millisecond)}
-	testing.expect(t, sync.atomic_load(&job.done))
-	testing.expect_value(t, job.error, linux.Errno.EPIPE)
+	for !thread.is_done(job.worker) && sdl.GetTicks() < deadline {time.sleep(time.Millisecond)}
+	testing.expect(t, thread.is_done(job.worker))
 }
 
 @(test)
@@ -76,7 +90,7 @@ drag_press_preserves_group_and_owns_paths :: proc(t: ^testing.T) {
 			y = g.list_top + 1,
 		},
 	}
-	file_drag_press(&b, g, 0, &event, {})
+	file_drag_press(&b, 0, &event, {})
 	testing.expect_value(t, len(b.marks), 3)
 	testing.expect_value(t, len(d.paths), 3)
 	selection_single(&b, 2)
@@ -86,7 +100,7 @@ drag_press_preserves_group_and_owns_paths :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(b.marks), 1)
 	selection_all(&b)
 	event.button.clicks = 2
-	file_drag_press(&b, g, 1, &event, {})
+	file_drag_press(&b, 1, &event, {})
 	testing.expect_value(t, b.selected, 1)
 	testing.expect_value(t, len(b.marks), 1)
 	testing.expect(t, !d.armed)
