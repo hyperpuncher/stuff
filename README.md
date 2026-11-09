@@ -11,7 +11,7 @@ lightweight file manager for linux
 - sortable name, size, and modified columns
 - multiselect, background copy and paste, and move to trash
 - right-click menu and GNOME/KDE file clipboard formats
-- clickable path breadcrumbs and a copy-path button
+- clickable path breadcrumbs, a copy-path button, and `ctrl+l` path editing
 - open files with their default system application
 - system monospace font and neutral lucide icons
 - desktop font size and text scaling where the settings portal provides them
@@ -33,6 +33,8 @@ just test
 ```
 
 font size is read at startup from the portal's `org.gnome.desktop.interface` settings. other desktops use a 14-logical-pixel fallback. display scaling applies in both cases.
+
+press `ctrl+l` to select and edit the path. `enter` opens the folder; `esc` restores the breadcrumbs. relative paths use the current folder, and `~/` uses the home folder.
 
 ## file actions
 

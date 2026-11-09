@@ -14,9 +14,11 @@ Header :: struct {
 	path:         string, // Owned; matches the most recent layout.
 	crumbs:       [dynamic]Breadcrumb,
 	copied_until: u64,
+	edit:         Path_Edit,
 }
 
 header_destroy :: proc(h: ^Header) {
+	path_edit_end(&h.edit)
 	delete(h.path)
 	delete(h.crumbs)
 }
@@ -66,7 +68,7 @@ header_hit :: proc(id: clay.ElementId, x, y: f32) -> bool {
 }
 
 header_target :: proc(h: ^Header, x, y: f32) -> u32 {
-	if h.path == "" {return 0}
+	if h.edit.active || h.path == "" {return 0}
 	if header_hit(clay.ID("copy_path"), x, y) {return clay.ID("copy_path").id}
 	if !header_hit(clay.ID("breadcrumbs"), x, y) {return 0}
 	for _, i in h.crumbs {
@@ -92,6 +94,8 @@ header_click :: proc(b: ^Browser, x, y: f32) -> (handled: bool, err: os.Error) {
 
 header_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 	h := &b.header
+	h.edit.font = p.font
+	if h.edit.active {path_edit_layout(b, g, p); return}
 	header_sync(h, b.path)
 	available := g.width - 2 * f32(u16(12 * g.scale)) - f32(u16(8 * g.scale)) - 28 * g.scale
 	labels := make([]string, len(h.crumbs), context.temp_allocator)

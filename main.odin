@@ -17,10 +17,12 @@ handle_event :: proc(b: ^Browser, event: ^sdl.Event, g: Geometry, running: ^bool
 		menu_changed := b.menu.active && b.menu.selected >= 0
 		if b.menu.active {b.menu.selected = -1}
 		changed := pointer_move(b, g, event.motion.x, event.motion.y)
+		if b.header.edit.dragging {path_edit_click(&b.header.edit, g, event.motion.x, true); return true}
 		return scrollbar_motion(b, g, event.motion.y) || changed || menu_changed
 	case .WINDOW_MOUSE_LEAVE, .WINDOW_FOCUS_LOST:
 		cancelled := event.type == .WINDOW_FOCUS_LOST && (b.drag.active || b.menu.active)
 		if cancelled {b.drag = {}; b.menu.active = false}
+		if event.type == .WINDOW_FOCUS_LOST {b.header.edit.dragging = false}
 		b.pointer.active = false
 		return hover_update(b, g) || cancelled
 	case .KEY_DOWN:
@@ -68,6 +70,7 @@ handle_input :: proc(
 	changed: bool,
 	err: os.Error,
 ) {
+	if handled, edit_err := path_edit_input(b, event, g); handled {return true, edit_err}
 	if menu_input(b, event, g) {return true, nil}
 	#partial switch event.type {
 	case .QUIT, .WINDOW_CLOSE_REQUESTED:
@@ -294,6 +297,8 @@ run :: proc() -> int {
 	window_icon(window)
 	hand := sdl.CreateSystemCursor(.POINTER)
 	defer if hand != nil {sdl.DestroyCursor(hand)}
+	text_cursor := sdl.CreateSystemCursor(.TEXT)
+	defer if text_cursor != nil {sdl.DestroyCursor(text_cursor)}
 	font_c := strings.clone_to_cstring(font_path)
 	defer delete(font_c)
 	font_points := desktop_font_points()
@@ -378,7 +383,8 @@ run :: proc() -> int {
 			)
 			commands := layout(&b, g, &painter)
 			if hover_update(&b, g) {commands = layout(&b, g, &painter)}
-			cursor_update(hand, &b, g)
+			cursor_update(hand, &b, g, text_cursor)
+			if b.header.edit.active {path_edit_ime_area(&b.header.edit, g, window)}
 			paint(&painter, commands, width, height)
 			free_all(context.temp_allocator)
 			dirty = false
@@ -417,7 +423,10 @@ run :: proc() -> int {
 			} else {
 				dirty = handle_event(&b, &event, g, &running) || dirty
 			}
-			cursor_update(hand, &b, g)
+			if b.header.edit.active != sdl.TextInputActive(window) {
+				if b.header.edit.active {sdl_check(sdl.StartTextInput(window))} else {sdl_check(sdl.StopTextInput(window))}
+			}
+			cursor_update(hand, &b, g, text_cursor)
 			if !sdl.PollEvent(&event) {break}
 		}
 	}

@@ -53,6 +53,13 @@ pointer_move :: proc(b: ^Browser, g: Geometry, x, y: f32) -> bool {
 }
 
 pointer_cursor :: proc(b: ^Browser, g: Geometry) -> sdl.SystemCursor {
+	if b.header.edit.active && b.pointer.active {
+		box := path_edit_box(g)
+		if b.pointer.x >= box.x &&
+		   b.pointer.x < box.x + box.width &&
+		   b.pointer.y >= box.y &&
+		   b.pointer.y < box.y + box.height {return .TEXT}
+	}
 	if b.menu.active {return b.hovered != 0 ? .POINTER : .DEFAULT}
 	if b.drag.active ||
 	   b.hovered == scrollbar_id(false).id ||
@@ -65,10 +72,17 @@ pointer_cursor :: proc(b: ^Browser, g: Geometry) -> sdl.SystemCursor {
 	return .DEFAULT
 }
 
-cursor_update :: proc(hand: ^sdl.Cursor, b: ^Browser, g: Geometry) {
+cursor_update :: proc(hand: ^sdl.Cursor, b: ^Browser, g: Geometry, text: ^sdl.Cursor = nil) {
 	// Headless SDL backends may not provide system cursors.
 	if hand == nil {return}
-	cursor := pointer_cursor(b, g) == .POINTER ? hand : sdl.GetDefaultCursor()
+	cursor := sdl.GetDefaultCursor()
+	#partial switch pointer_cursor(b, g) {
+	case .POINTER:
+		cursor = hand
+	case .TEXT:
+		cursor = text
+	case:
+	}
 	if cursor != nil && cursor != sdl.GetCursor() {sdl_check(sdl.SetCursor(cursor))}
 }
 

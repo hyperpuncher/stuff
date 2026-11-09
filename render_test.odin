@@ -192,6 +192,7 @@ large_directory_layout :: proc(t: ^testing.T) {
 	verify_theme_switch(t, &p)
 	verify_header_actions(t, &p)
 	verify_context_menu_rendering(t, &p)
+	verify_path_editor_rendering(t, &p)
 
 	b: Browser
 	defer browser_destroy(&b)

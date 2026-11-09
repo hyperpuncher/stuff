@@ -234,6 +234,8 @@ browser_navigate :: proc(b: ^Browser, path: string) -> os.Error {
 		history_entry_destroy(previous)
 		return err
 	}
+	path_edit_end(&b.header.edit)
+	if b.path == previous.path {history_entry_destroy(previous); return nil}
 	append(&b.back, previous)
 	for entry in b.forward {history_entry_destroy(entry)}
 	clear(&b.forward)
@@ -254,6 +256,7 @@ browser_history :: proc(b: ^Browser, backward: bool) -> os.Error {
 	defer history_entry_destroy(destination)
 	append(to, previous)
 	browser_restore_location(b, destination)
+	path_edit_end(&b.header.edit)
 	return nil
 }
 
