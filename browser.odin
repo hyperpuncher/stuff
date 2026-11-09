@@ -5,6 +5,7 @@ import "core:os"
 import "core:slice"
 import "core:strings"
 import "core:time"
+import "core:unicode/utf8"
 
 Column :: enum {
 	Name,
@@ -27,6 +28,7 @@ Browser :: struct {
 	marks:                  map[int]bool,
 	marked_bytes:           i64,
 	show_hidden:            bool,
+	search:                 string, // Owned filename query; kept while focus is on the results.
 	visible_bytes:          i64,
 	sort_column:            Column,
 	descending:             bool,
@@ -70,6 +72,7 @@ browser_destroy :: proc(b: ^Browser) {
 	delete(b.visible)
 	delete(b.marks)
 	delete(b.path)
+	delete(b.search)
 	for entry in b.back {history_entry_destroy(entry)}
 	for entry in b.forward {history_entry_destroy(entry)}
 	delete(b.back)
@@ -80,6 +83,7 @@ browser_load :: proc(b: ^Browser, path: string) -> os.Error {
 	if path == TRASH_PATH {
 		if !trash_view_request(b) {return .Unsupported}
 		if b.path == TRASH_PATH {browser_message(b, ""); return nil}
+		search_reset(b)
 		os.file_info_slice_delete(b.entries, context.allocator)
 		trash_records_destroy(b.trash_records)
 		b.entries, b.trash_records = nil, nil
@@ -97,7 +101,7 @@ browser_load :: proc(b: ^Browser, path: string) -> os.Error {
 		delete(absolute)
 		return read_err
 	}
-	if b.path != absolute {b.header.copied_until = 0; b.space = {}; b.drag = {}}
+	if b.path != absolute {search_reset(b); b.header.copied_until = 0; b.space = {}; b.drag = {}}
 	b.menu.active = false
 	os.file_info_slice_delete(b.entries, context.allocator)
 	delete(b.path)
@@ -110,17 +114,18 @@ browser_load :: proc(b: ^Browser, path: string) -> os.Error {
 	return nil
 }
 
-browser_filter :: proc(b: ^Browser) {
+browser_filter :: proc(b: ^Browser, reset_selection := true) {
+	query_runes := utf8.rune_count_in_string(b.search)
 	clear(&b.visible)
 	b.visible_bytes = 0
 	for entry, i in b.entries {
 		if b.path != TRASH_PATH && !b.show_hidden && strings.has_prefix(entry.name, ".") {continue}
+		if !search_matches(entry.name, b.search, query_runes) {continue}
 		append(&b.visible, i)
 		if entry.type == .Regular {b.visible_bytes += max(0, entry.size)}
 	}
 	browser_sort(b)
-	selection_single(b, 0)
-	b.first = 0
+	if reset_selection {selection_single(b, 0); b.first = 0}
 }
 
 browser_sort :: proc(b: ^Browser) {
@@ -263,8 +268,8 @@ browser_navigate :: proc(b: ^Browser, path: string) -> os.Error {
 		history_entry_destroy(previous)
 		return err
 	}
-	path_edit_end(&b.header.edit)
 	if b.path == previous.path {history_entry_destroy(previous); return nil}
+	path_edit_end(&b.header.edit)
 	append(&b.back, previous)
 	for entry in b.forward {history_entry_destroy(entry)}
 	clear(&b.forward)

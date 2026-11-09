@@ -5,12 +5,6 @@ import "core:os"
 import "core:strings"
 import clay "vendor/clay"
 
-Edit_Mode :: enum {
-	Path,
-	Rename,
-	New_Folder,
-}
-
 file_dialog_box :: proc(g: Geometry) -> clay.BoundingBox {
 	width, height := min(480 * g.scale, g.width - 32 * g.scale), g.row + g.header + 16 * g.scale
 	return {(g.width - width) / 2, (g.height - height) / 2, width, height}
@@ -18,11 +12,12 @@ file_dialog_box :: proc(g: Geometry) -> clay.BoundingBox {
 
 file_dialog_start :: proc(b: ^Browser, rename: bool) {
 	if b.pending_files != nil || b.path == TRASH_PATH {return}
+	if rename && len(b.marks) != 1 {browser_message(b, "select one item to rename"); return}
+	search_end(b)
 	edit := &b.header.edit
 	path_edit_end(edit)
 	edit.mode = rename ? .Rename : .New_Folder
 	if rename {
-		if len(b.marks) != 1 {browser_message(b, "select one item to rename"); return}
 		for index in b.marks {
 			entry := b.entries[index]
 			edit.source, edit.value = strings.clone(entry.fullpath), strings.clone(entry.name)
@@ -66,7 +61,7 @@ file_dialog_submit :: proc(b: ^Browser) {
 
 file_dialog_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 	edit := &b.header.edit
-	if !edit.active || edit.mode == .Path {return}
+	if !edit.active || !edit_is_dialog(edit.mode) {return}
 	box := file_dialog_box(g)
 	popup_shadow_layout(box, g.scale, p)
 	if clay.UI(clay.ID("file-dialog"))(

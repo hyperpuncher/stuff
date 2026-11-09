@@ -9,6 +9,15 @@ import clay "vendor/clay"
 import sdl "vendor:sdl3"
 import ttf "vendor:sdl3/ttf"
 
+Edit_Mode :: enum {
+	Path,
+	Search,
+	Rename,
+	New_Folder,
+}
+
+edit_is_dialog :: proc(mode: Edit_Mode) -> bool {return mode == .Rename || mode == .New_Folder}
+
 Path_Edit :: struct {
 	active, dragging:   bool,
 	mode:               Edit_Mode,
@@ -34,6 +43,7 @@ path_edit_end :: proc(edit: ^Path_Edit) {
 }
 
 path_edit_start :: proc(b: ^Browser) {
+	search_end(b)
 	edit := &b.header.edit
 	if edit.mode != .Path {path_edit_end(edit)}
 	if !edit.active {edit.value = strings.clone(b.path)}
@@ -45,7 +55,7 @@ path_edit_start :: proc(b: ^Browser) {
 }
 
 path_edit_box :: proc(g: Geometry, mode: Edit_Mode = .Path) -> clay.BoundingBox {
-	if mode != .Path {
+	if edit_is_dialog(mode) {
 		box := file_dialog_box(g)
 		return {
 			box.x + 8 * g.scale,
@@ -110,6 +120,7 @@ path_edit_replace_range :: proc(b: ^Browser, value: string, low, high: int) {
 	delete(edit.composition)
 	edit.value, edit.composition = next, ""
 	edit.cursor, edit.anchor = low + len(value), low + len(value)
+	search_update(b)
 }
 
 path_edit_copy :: proc(b: ^Browser) -> bool {
@@ -146,6 +157,30 @@ path_edit_input :: proc(
 	err: os.Error,
 ) {
 	edit := &b.header.edit
+	if event.type == .KEY_DOWN && !edit_is_dialog(edit.mode) {
+		ctrl := event.key.mod & sdl.KMOD_CTRL != {}
+		slash :=
+			event.key.key == sdl.K_SLASH &&
+			event.key.mod & (sdl.KMOD_CTRL | sdl.KMOD_ALT | sdl.KMOD_GUI) == {} &&
+			!edit.active
+		if ctrl && event.key.key == sdl.K_F || slash {
+			if !event.key.repeat {search_start(b)}
+			return true, nil
+		}
+		if edit.mode == .Search &&
+		   event.key.key == sdl.K_ESCAPE &&
+		   !b.menu.active {search_end(b); return true, nil}
+	}
+	if event.type == .MOUSE_BUTTON_DOWN &&
+	   edit.mode == .Search &&
+	   !edit.active &&
+	   event.button.button == sdl.BUTTON_LEFT {
+		box := path_edit_box(g)
+		if event.button.x >= box.x &&
+		   event.button.x < box.x + box.width &&
+		   event.button.y >= box.y &&
+		   event.button.y < box.y + box.height {edit.active = true}
+	}
 	if event.type == .KEY_DOWN &&
 	   event.key.key == sdl.K_R &&
 	   event.key.mod & sdl.KMOD_CTRL != {} &&
@@ -157,7 +192,7 @@ path_edit_input :: proc(
 	if event.type == .KEY_DOWN &&
 	   event.key.key == sdl.K_L &&
 	   event.key.mod & sdl.KMOD_CTRL != {} &&
-	   (!edit.active || edit.mode == .Path) {
+	   (!edit.active || !edit_is_dialog(edit.mode)) {
 		if !event.key.repeat {path_edit_start(b)}
 		return true, nil
 	}
@@ -184,9 +219,9 @@ path_edit_input :: proc(
 	case .MOUSE_BUTTON_UP:
 		edit.dragging = false
 	case .MOUSE_WHEEL:
-		if edit.mode != .Path {return true, nil}
+		if edit_is_dialog(edit.mode) {return true, nil}
 	case .MOUSE_BUTTON_DOWN:
-		if edit.mode != .Path {
+		if edit_is_dialog(edit.mode) {
 			if header_hit(
 				clay.ID("file-dialog-cancel"),
 				event.button.x,
@@ -209,7 +244,7 @@ path_edit_input :: proc(
 			}
 			return true, nil
 		}
-		if edit.mode != .Path {
+		if edit_is_dialog(edit.mode) {
 			if !header_hit(
 				clay.ID("file-dialog"),
 				event.button.x,
@@ -217,11 +252,11 @@ path_edit_input :: proc(
 			) {path_edit_end(edit)}
 			return true, nil
 		}
-		path_edit_end(edit)
+		if edit.mode == .Search {search_blur(edit)} else {path_edit_end(edit)}
 	case .KEY_DOWN:
 		ctrl, shift := event.key.mod & sdl.KMOD_CTRL != {}, event.key.mod & sdl.KMOD_SHIFT != {}
 		key := event.key.key
-		if ctrl && key == sdl.K_Z {path_edit_undo(edit, shift); return true, nil}
+		if ctrl && key == sdl.K_Z {path_edit_undo(edit, shift); search_update(b); return true, nil}
 		if ctrl && key == sdl.K_A {edit.anchor, edit.cursor = 0, len(edit.value); return true, nil}
 		copy := ctrl && key == sdl.K_C || ctrl && !shift && key == sdl.K_INSERT
 		cut := ctrl && key == sdl.K_X || shift && !ctrl && key == sdl.K_DELETE
@@ -239,7 +274,8 @@ path_edit_input :: proc(
 			path_edit_end(edit)
 		case sdl.K_RETURN, sdl.K_KP_ENTER:
 			if event.key.repeat || edit.composition != "" {return true, nil}
-			if edit.mode != .Path {file_dialog_submit(b); return true, nil}
+			if edit.mode == .Search {search_blur(edit); return true, nil}
+			if edit_is_dialog(edit.mode) {file_dialog_submit(b); return true, nil}
 			if edit.value == "" {browser_message(b, "enter a folder path"); return true, nil}
 			target := edit.value
 			if target ==
@@ -313,9 +349,9 @@ path_edit_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 		layout = {
 			sizing = {
 				clay.SizingGrow(),
-				clay.SizingFixed(edit.mode == .Path ? g.header : g.header - 8 * g.scale),
+				clay.SizingFixed(edit_is_dialog(edit.mode) ? g.header - 8 * g.scale : g.header),
 			},
-			padding = clay.PaddingAll(edit.mode == .Path ? u16(4 * g.scale) : 0),
+			padding = clay.PaddingAll(edit_is_dialog(edit.mode) ? 0 : u16(4 * g.scale)),
 		},
 	},
 	) {
@@ -363,13 +399,13 @@ path_edit_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 					floating = {
 						attachTo = .Parent,
 						clipTo = .AttachedParent,
-						zIndex = edit.mode == .Path ? 1 : 6,
+						zIndex = edit_is_dialog(edit.mode) ? 6 : 1,
 						attachment = {element = .LeftCenter, parent = .LeftCenter},
 						pointerCaptureMode = .Passthrough,
 					},
 				},
-				) {label(display, theme.text, g.font_size)}
-				if low == high || edit.composition != "" {
+				) {label(display == "" && edit.mode == .Search ? "search" : display, display == "" && edit.mode == .Search ? theme.muted : theme.text, g.font_size)}
+				if edit.active && (low == high || edit.composition != "") {
 					if clay.UI(clay.ID("path-edit-caret"))(
 					{
 						layout = {
@@ -381,7 +417,7 @@ path_edit_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 						floating = {
 							attachTo = .Parent,
 							clipTo = .AttachedParent,
-							zIndex = edit.mode == .Path ? 2 : 7,
+							zIndex = edit_is_dialog(edit.mode) ? 7 : 2,
 							offset = {cursor, 0},
 							attachment = {element = .LeftCenter, parent = .LeftCenter},
 							pointerCaptureMode = .Passthrough,

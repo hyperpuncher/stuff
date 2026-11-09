@@ -68,7 +68,7 @@ header_hit :: proc(id: clay.ElementId, x, y: f32) -> bool {
 }
 
 header_target :: proc(h: ^Header, x, y: f32) -> u32 {
-	if h.edit.active || h.path == "" || h.path == TRASH_PATH {return 0}
+	if h.edit.active || h.edit.mode == .Search || h.path == "" || h.path == TRASH_PATH {return 0}
 	if header_hit(clay.ID("copy_path"), x, y) {return clay.ID("copy_path").id}
 	if !header_hit(clay.ID("breadcrumbs"), x, y) {return 0}
 	for _, i in h.crumbs {
@@ -95,7 +95,8 @@ header_click :: proc(b: ^Browser, x, y: f32) -> (handled: bool, err: os.Error) {
 header_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 	h := &b.header
 	h.edit.font = p.font
-	if h.edit.active && h.edit.mode == .Path {path_edit_layout(b, g, p); return}
+	if h.edit.mode == .Search ||
+	   h.edit.active && !edit_is_dialog(h.edit.mode) {path_edit_layout(b, g, p); return}
 	header_sync(h, b.path)
 	if b.path == TRASH_PATH {
 		if clay.UI()(

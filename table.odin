@@ -218,6 +218,7 @@ table_row :: proc(b: ^Browser, index: int, g: Geometry, p: ^Painter) {
 }
 
 layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.RenderCommand) {
+	b.first = clamp(b.first, 0, max(0, len(b.visible) - g.rows))
 	clay.SetLayoutDimensions({g.width, g.height})
 	clay.BeginLayout()
 	if clay.UI(clay.ID("window"))(
@@ -247,12 +248,13 @@ layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.Ren
 				) {
 					if clay.UI(clay.ID("files-viewport"))(viewport_config()) {
 						if len(b.visible) == 0 {
+							message :=
+								b.path == TRASH_PATH ? "trash is empty" : "this folder is empty"
+							if b.search != "" {message = "no matching items"}
+							if b.path == TRASH_PATH &&
+							   b.pending_trash != nil {message = "loading trash…"}
 							if clay.UI()({layout = {padding = clay.PaddingAll(u16(g.padding))}}) {
-								label(
-									b.path == TRASH_PATH ? (b.pending_trash != nil ? "loading trash…" : "trash is empty") : "this folder is empty",
-									theme.muted,
-									g.font_size,
-								)
+								label(message, theme.muted, g.font_size)
 							}
 						}
 						for i in b.first ..< min(b.first + g.rows + 1, len(b.visible)) {table_row(b, i, g, p)}
