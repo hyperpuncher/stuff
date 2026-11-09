@@ -283,7 +283,22 @@ native_wayland_file_drag :: proc(t: ^testing.T) {
 	config_c := strings.clone_to_cstring(config)
 	defer delete(config_c)
 	args := [?]cstring{"labwc", "-C", config_c, nil}
-	process := sdl.CreateProcess(raw_data(args[:]), true)
+	props := sdl.CreateProperties()
+	defer sdl.DestroyProperties(props)
+	sdl_check(
+		sdl.SetPointerProperty(props, sdl.PROP_PROCESS_CREATE_ARGS_POINTER, raw_data(args[:])),
+	)
+	sdl_check(
+		sdl.SetNumberProperty(
+			props,
+			sdl.PROP_PROCESS_CREATE_STDOUT_NUMBER,
+			i64(sdl.ProcessIO.STDIO_APP),
+		),
+	)
+	sdl_check(
+		sdl.SetBooleanProperty(props, sdl.PROP_PROCESS_CREATE_STDERR_TO_STDOUT_BOOLEAN, true),
+	)
+	process := sdl.CreateProcessWithProperties(props)
 	if process == nil {testing.expect(t, false, "native drag tests require labwc"); return}
 	defer {
 		_ = sdl.KillProcess(process, true)
@@ -297,7 +312,22 @@ native_wayland_file_drag :: proc(t: ^testing.T) {
 		if socket_err == nil {os.file_info_delete(info, context.allocator); ready = true; break}
 		time.sleep(20 * time.Millisecond)
 	}
-	if !ready {testing.expect(t, false, "private Wayland compositor did not start"); return}
+	if !ready {
+		_ = sdl.KillProcess(process, true)
+		code: c.int
+		output := sdl.ReadProcess(process, nil, &code)
+		defer sdl.free(output)
+		testing.expect(
+			t,
+			false,
+			fmt.tprintf(
+				"private Wayland compositor did not start (exit %d): %s",
+				code,
+				string(cast(cstring)output),
+			),
+		)
+		return
+	}
 	if !sdl.Init({.VIDEO}) {testing.expect(t, false, string(sdl.GetError())); return}
 	defer sdl.Quit()
 	b: Browser
