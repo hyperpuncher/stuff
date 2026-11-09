@@ -187,6 +187,28 @@ menu_shadow_texture :: proc(p: ^Painter, box: clay.BoundingBox, scale: f32) -> ^
 	return texture
 }
 
+popup_shadow_layout :: proc(box: clay.BoundingBox, scale: f32, p: ^Painter) {
+	padding := 21 * scale
+	shadow := menu_shadow_texture(p, box, scale)
+	if clay.UI()(
+	{
+		layout = {
+			sizing = {
+				clay.SizingFixed(f32(p.menu_shadow_size[0])),
+				clay.SizingFixed(f32(p.menu_shadow_size[1])),
+			},
+		},
+		floating = {
+			attachTo = .Root,
+			offset = {box.x - padding, box.y + 4 * scale - padding},
+			zIndex = 4,
+			pointerCaptureMode = .Passthrough,
+		},
+		image = {imageData = shadow},
+	},
+	) {}
+}
+
 menu_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 	names := [Menu_Action]string {
 		.Copy       = "copy",
@@ -210,25 +232,7 @@ menu_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 	}
 	if !b.menu.active {return}
 	box := menu_box(b, g)
-	padding := 21 * g.scale
-	shadow := menu_shadow_texture(p, box, g.scale)
-	if clay.UI()(
-	{
-		layout = {
-			sizing = {
-				clay.SizingFixed(f32(p.menu_shadow_size[0])),
-				clay.SizingFixed(f32(p.menu_shadow_size[1])),
-			},
-		},
-		floating = {
-			attachTo = .Root,
-			offset = {box.x - padding, box.y + 4 * g.scale - padding},
-			zIndex = 4,
-			pointerCaptureMode = .Passthrough,
-		},
-		image = {imageData = shadow},
-	},
-	) {}
+	popup_shadow_layout(box, g.scale, p)
 	if clay.UI(clay.ID("context-menu"))(
 	{
 		layout = {

@@ -12,8 +12,7 @@ Edit_Mode :: enum {
 }
 
 file_dialog_box :: proc(g: Geometry) -> clay.BoundingBox {
-	width, height :=
-		min(480 * g.scale, g.width - 32 * g.scale), 2 * g.row + g.header + 24 * g.scale
+	width, height := min(480 * g.scale, g.width - 32 * g.scale), g.row + g.header + 24 * g.scale
 	return {(g.width - width) / 2, (g.height - height) / 2, width, height}
 }
 
@@ -69,6 +68,7 @@ file_dialog_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 	edit := &b.header.edit
 	if !edit.active || edit.mode == .Path {return}
 	box := file_dialog_box(g)
+	popup_shadow_layout(box, g.scale, p)
 	if clay.UI(clay.ID("file-dialog"))(
 	{
 		layout = {
@@ -81,17 +81,6 @@ file_dialog_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 		cornerRadius = clay.CornerRadiusAll(8 * g.scale),
 	},
 	) {
-		if clay.UI()(
-		{
-			layout = {
-				sizing = {clay.SizingGrow(), clay.SizingFixed(g.row)},
-				padding = {left = u16(8 * g.scale)},
-				childAlignment = {y = .Center},
-			},
-		},
-		) {
-			label(edit.mode == .Rename ? "rename" : "new folder", theme.text, g.font_size)
-		}
 		path_edit_layout(b, g, p)
 		if clay.UI()({layout = {sizing = {clay.SizingGrow(), clay.SizingFixed(8 * g.scale)}}}) {}
 		if clay.UI()(

@@ -49,7 +49,7 @@ path_edit_box :: proc(g: Geometry, mode: Edit_Mode = .Path) -> clay.BoundingBox 
 		box := file_dialog_box(g)
 		return {
 			box.x + 12 * g.scale,
-			box.y + 12 * g.scale + g.row,
+			box.y + 12 * g.scale,
 			box.width - 24 * g.scale,
 			g.header - 8 * g.scale,
 		}

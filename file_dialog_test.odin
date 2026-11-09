@@ -95,6 +95,26 @@ verify_file_dialog_rendering :: proc(t: ^testing.T, p: ^Painter) {
 	file_dialog_start(&b, true)
 	commands := layout(&b, g, p)
 	paint(p, commands, 960, 640)
+	rename_labels := 0
+	for i in 0 ..< commands.length {
+		cmd := commands.internalArray[i]
+		if cmd.commandType != .Text {continue}
+		text := cmd.renderData.text.stringContents
+		if string(text.chars[:text.length]) == "rename" {rename_labels += 1}
+	}
+	testing.expect_value(t, rename_labels, 1) // The button supplies the action, without a duplicate title.
+	box := file_dialog_box(g)
+	pixel := sdl.Rect{i32(g.width / 2), i32(box.y + box.height + 3), 1, 1}
+	surface := sdl.RenderReadPixels(p.renderer, &pixel)
+	if surface == nil {testing.fail_now(t, string(sdl.GetError()))}
+	r, green, blue, alpha: u8
+	sdl_check(sdl.ReadSurfacePixel(surface, 0, 0, &r, &green, &blue, &alpha))
+	sdl.DestroySurface(surface)
+	testing.expect(
+		t,
+		r < u8(theme.background[0]),
+		"the dialog must cast a shadow outside its bounds",
+	)
 	field := clay.GetElementData(clay.ID("path-edit"))
 	testing.expect_value(t, field.boundingBox, path_edit_box(g, .Rename))
 	for name in ([?]string{"file-dialog-cancel", "file-dialog-submit"}) {
