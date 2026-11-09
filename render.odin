@@ -32,6 +32,7 @@ Icon :: enum {
 	PlaceMusic,
 	PlaceVideos,
 	PlaceFilesystem,
+	Unmount,
 	CopyPath,
 	Check,
 	ChevronRight,
@@ -60,6 +61,7 @@ ICON_SOURCES :: [Icon]string {
 	.PlaceMusic      = #load("vendor/lucide/audio-lines.svg"),
 	.PlaceVideos     = #load("vendor/lucide/video.svg"),
 	.PlaceFilesystem = #load("vendor/lucide/hard-drive.svg"),
+	.Unmount         = #load("vendor/lucide/eject.svg"),
 	.CopyPath        = #load("vendor/lucide/copy.svg"),
 	.Check           = #load("vendor/lucide/check.svg"),
 	.ChevronRight    = #load("vendor/lucide/chevron-right.svg"),
@@ -227,7 +229,8 @@ painter_load_icons :: proc(p: ^Painter, scale: f32) {
 		stream := sdl.IOFromConstMem(raw_data(svg), uint(len(svg)))
 		assert(stream != nil, string(sdl.GetError()))
 		defer sdl.CloseIO(stream)
-		surface := image.LoadSizedSVG_IO(stream, i32(18 * scale), i32(18 * scale))
+		size := i32(icon_size(kind) * scale)
+		surface := image.LoadSizedSVG_IO(stream, size, size)
 		assert(surface != nil, string(sdl.GetError()))
 		defer sdl.DestroySurface(surface)
 		texture := sdl.CreateTextureFromSurface(p.renderer, surface)
@@ -361,24 +364,59 @@ paint_rounded_rectangle :: proc(
 		{box.x + box.width - radii[2], box.y + box.height - radii[2]},
 		{box.x + radii[3], box.y + box.height - radii[3]},
 	}
-	angles := [4]f32{math.PI, 1.5 * math.PI, 0, 0.5 * math.PI}
+	// Unit quarter-circle points, reused for each corner without trigonometry.
+	arc :: [9]sdl.FPoint {
+		{1, 0},
+		{0.98078528, 0.19509032},
+		{0.92387953, 0.38268343},
+		{0.83146961, 0.55557023},
+		{0.70710678, 0.70710678},
+		{0.55557023, 0.83146961},
+		{0.38268343, 0.92387953},
+		{0.19509032, 0.98078528},
+		{0, 1},
+	}
 	color := data.backgroundColor
 	tint := sdl.FColor{color[0] / 255, color[1] / 255, color[2] / 255, color[3] / 255}
-	vertices: [37]sdl.Vertex
-	indices: [108]i32
+	// A half-pixel fade gives small capsule ends smooth coverage.
+	capsule :=
+		box.width >= box.height &&
+		radii[0] == limit &&
+		radii[1] == limit &&
+		radii[2] == limit &&
+		radii[3] == limit
+	vertices: [73]sdl.Vertex
+	indices: [324]i32
+	vertex_count, index_count := i32(37), i32(108)
 	vertices[0] = {
 		position = {box.x + box.width / 2, box.y + box.height / 2},
 		color    = tint,
 	}
 	for center, corner in centers {
-		for step in 0 ..< 9 {
-			angle := angles[corner] + f32(step) * (0.5 * math.PI / 8)
-			vertices[1 + corner * 9 + step] = {
-				position = {
-					center.x + math.cos(angle) * radii[corner],
-					center.y + math.sin(angle) * radii[corner],
-				},
+		for point, step in arc {
+			index := 1 + corner * 9 + step
+			direction: sdl.FPoint
+			switch corner {
+			case 0:
+				direction = {-point.x, -point.y}
+			case 1:
+				direction = {point.y, -point.x}
+			case 2:
+				direction = point
+			case 3:
+				direction = {-point.y, point.x}
+			}
+			radius := capsule ? max(0, radii[corner] - 0.5) : radii[corner]
+			vertices[index] = {
+				position = {center.x + direction.x * radius, center.y + direction.y * radius},
 				color    = tint,
+			}
+			if capsule {
+				outer := radii[corner] + 0.5
+				vertices[index + 36] = {
+					position = {center.x + direction.x * outer, center.y + direction.y * outer},
+					color    = {tint.r, tint.g, tint.b, 0},
+				}
 			}
 		}
 	}
@@ -387,14 +425,26 @@ paint_rounded_rectangle :: proc(
 		indices[i * 3 + 1] = i32(i + 1)
 		indices[i * 3 + 2] = i32((i + 1) % 36 + 1)
 	}
+	previous: sdl.BlendMode
+	if capsule {
+		for i in 0 ..< 36 {
+			a, b := i32(i + 1), i32((i + 1) % 36 + 1)
+			triangles := [6]i32{a, a + 36, b + 36, a, b + 36, b}
+			copy(indices[108 + i * 6:][:6], triangles[:])
+		}
+		vertex_count, index_count = 73, 324
+		sdl_check(sdl.GetRenderDrawBlendMode(renderer, &previous))
+		sdl_check(sdl.SetRenderDrawBlendMode(renderer, sdl.BLENDMODE_BLEND))
+	}
+	defer if capsule {sdl_check(sdl.SetRenderDrawBlendMode(renderer, previous))}
 	sdl_check(
 		sdl.RenderGeometry(
 			renderer,
 			nil,
 			raw_data(vertices[:]),
-			i32(len(vertices)),
+			vertex_count,
 			raw_data(indices[:]),
-			i32(len(indices)),
+			index_count,
 		),
 	)
 }

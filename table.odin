@@ -86,10 +86,13 @@ label :: proc(value: string, color: clay.Color, scale: f32) {
 	clay.Text(value, {textColor = color, fontSize = u16(16 * scale), wrapMode = .None})
 }
 
+icon_size :: proc(kind: Icon) -> f32 {return kind == .Unmount ? 12 : 18}
+
 icon_element :: proc(p: ^Painter, kind: Icon, scale: f32) {
+	size := icon_size(kind) * scale
 	if clay.UI()(
 	{
-		layout = {sizing = {clay.SizingFixed(18 * scale), clay.SizingFixed(18 * scale)}},
+		layout = {sizing = {clay.SizingFixed(size), clay.SizingFixed(size)}},
 		image = {imageData = p.icons[kind]},
 	},
 	) {}
@@ -209,7 +212,7 @@ layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.Ren
 	) {
 		header_layout(b, g, p)
 		if clay.UI()({layout = {sizing = {clay.SizingGrow(), clay.SizingGrow()}}}) {
-			places_layout(b, g, p)
+			places_layout(b, places_geometry(g), p)
 			if clay.UI()(
 			{
 				layout = {
@@ -239,17 +242,29 @@ layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.Ren
 		{
 			layout = {
 				sizing = {clay.SizingGrow(), clay.SizingFixed(g.footer)},
-				padding = {left = u16(g.padding)},
+				padding = {left = u16(g.padding), right = u16(g.padding)},
+				childGap = u16(g.gap),
 				childAlignment = {y = .Center},
 			},
 			backgroundColor = theme.panel,
 		},
 		) {
-			if b.status_error != "" {
-				label(b.status_error, theme.text, g.scale)
-			} else {
-				label(browser_summary(b), theme.muted, g.scale)
+			summary, color := browser_summary(b), theme.muted
+			if b.pending_disk != nil {
+				verb := b.pending_disk.unmount ? "unmounting" : "mounting"
+				summary = fmt.tprintf("%s %s…", verb, b.pending_disk.device)
 			}
+			if b.status_error != "" {summary, color = b.status_error, theme.text}
+			free_space := ""
+			width := g.width - 2 * g.padding
+			if b.space.valid {
+				free_space = fmt.tprintf("%s free", format_size(b.space.available))
+				width -= f32(text_width(p.font, free_space)) + g.gap
+			}
+			if clay.UI()({layout = {sizing = {width = clay.SizingGrow()}}}) {
+				label(fit_label(p.font, summary, width), color, g.scale)
+			}
+			if free_space != "" {label(free_space, theme.muted, g.scale)}
 		}
 	}
 	return clay.EndLayout(0)

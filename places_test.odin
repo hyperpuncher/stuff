@@ -62,7 +62,7 @@ xdg_places_and_navigation :: proc(t: ^testing.T) {
 	testing.expect(t, browser_load(&b, home) == nil)
 	places_init(&b.places)
 	// Duplicate paths, disabled folders, and missing directories add no dead entries.
-	labels := [?]string{"home", "desktop", "documents", "downloads", "filesystem"}
+	labels := [?]string{"home", "desktop", "documents", "downloads", "", "filesystem"}
 	testing.expect_value(t, len(b.places.entries), len(labels))
 	if len(b.places.entries) != len(labels) {return}
 	for label, i in labels {testing.expect_value(t, b.places.entries[i].label, label)}
@@ -70,9 +70,9 @@ xdg_places_and_navigation :: proc(t: ^testing.T) {
 	testing.expect_value(t, b.places.entries[1].path, desktop)
 	testing.expect_value(t, b.places.entries[2].path, documents)
 	testing.expect_value(t, b.places.entries[3].path, downloads)
-	testing.expect_value(t, b.places.entries[4].path, "/")
+	testing.expect_value(t, b.places.entries[5].path, "/")
 	testing.expect_value(t, places_active(&b.places, fmt.tprintf("%s/child", desktop)), 1)
-	testing.expect_value(t, places_active(&b.places, fmt.tprintf("%s-other", home)), 4)
+	testing.expect_value(t, places_active(&b.places, fmt.tprintf("%s-other", home)), 5)
 
 	g := geometry(960, 640, 1)
 	b.selected = 1
@@ -111,7 +111,7 @@ xdg_places_and_navigation :: proc(t: ^testing.T) {
 		type   = .MOUSE_BUTTON_DOWN,
 		button = sdl.BUTTON_LEFT,
 		x      = 20,
-		y      = g.list_top + 3 * g.row + 1,
+		y      = places_geometry(g).list_top + 3 * g.row + 1,
 	}
 	testing.expect(t, handle_event(&b, &event, g, &running))
 	testing.expect_value(t, b.path, downloads)
@@ -159,7 +159,7 @@ xdg_places_and_navigation :: proc(t: ^testing.T) {
 			type = .MOUSE_BUTTON_DOWN,
 			button = sdl.BUTTON_LEFT,
 			x = 20,
-			y = g.list_top + f32(len(b.places.entries)) * g.row + 1,
+			y = places_geometry(g).list_top + f32(len(b.places.entries)) * g.row + 1,
 		},
 	}
 	testing.expect(t, handle_event(&b, &event, g, &running)) // Clear the file-row hover.
@@ -167,7 +167,7 @@ xdg_places_and_navigation :: proc(t: ^testing.T) {
 	testing.expect_value(t, b.first, 3)
 	// A place removed after startup must fail without changing the current folder.
 	testing.expect(t, os.remove(desktop) == nil)
-	event.button.y = g.list_top + g.row + 1
+	event.button.y = places_geometry(g).list_top + g.row + 1
 	testing.expect(t, handle_event(&b, &event, g, &running))
 	testing.expect(t, strings.has_prefix(b.status_error, "cannot read folder:"))
 	testing.expect_value(t, b.path, home)
@@ -182,21 +182,22 @@ selection_keys_move_only_the_focused_pane :: proc(t: ^testing.T) {
 	resize(&b.places.entries, 100)
 	g := geometry(960, 640, 1)
 	running := true
-	cases := [?]struct {
-		key:             sdl.Keycode,
-		selected, first: int,
-	} {
-		{sdl.K_PAGEDOWN, g.rows, 1},
-		{sdl.K_END, 99, 100 - g.rows},
-		{sdl.K_PAGEUP, 99 - g.rows, 99 - g.rows},
-		{sdl.K_HOME, 0, 0},
-		{sdl.K_UP, 0, 0},
-		{sdl.K_DOWN, 1, 0},
-		{sdl.K_K, 0, 0},
-		{sdl.K_J, 1, 0},
-	}
 	panes := [?]bool{false, true}
 	for focused in panes {
+		rows := focused ? places_geometry(g).rows : g.rows
+		cases := [?]struct {
+			key:             sdl.Keycode,
+			selected, first: int,
+		} {
+			{sdl.K_PAGEDOWN, rows, 1},
+			{sdl.K_END, 99, 100 - rows},
+			{sdl.K_PAGEUP, 99 - rows, 99 - rows},
+			{sdl.K_HOME, 0, 0},
+			{sdl.K_UP, 0, 0},
+			{sdl.K_DOWN, 1, 0},
+			{sdl.K_K, 0, 0},
+			{sdl.K_J, 1, 0},
+		}
 		b.places.focused = focused
 		b.selected, b.first, b.places.selected, b.places.first = 0, 0, 0, 0
 		for item in cases {

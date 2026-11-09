@@ -13,8 +13,12 @@ hover_target :: proc(b: ^Browser, g: Geometry) -> u32 {
 	if !b.pointer.active || x < 0 || y < 0 || x >= g.width || y >= g.height {return 0}
 	if y < g.header {return header_target(&b.header, x, y)}
 	if x < g.sidebar {
-		index := row_at(g, y, b.places.first, len(b.places.entries))
-		if index >= 0 {return clay.ID("place", u32(index)).id}
+		index := row_at(places_geometry(g), y, b.places.first, len(b.places.entries))
+		if index >= 0 {
+			if b.places.entries[index].section {return 0}
+			if place_unmount_at(b.places.entries[index], g, x) {return place_unmount_id(index).id}
+			return clay.ID("place", u32(index)).id
+		}
 		return 0
 	}
 	if y < g.header + g.row {

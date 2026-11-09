@@ -267,4 +267,5 @@ large_directory_layout :: proc(t: ^testing.T) {
 		paint(&p, commands, size[0], size[1])
 		testing.expect(t, len(p.slots) <= 3 * g.rows + min(g.rows, len(b.places.entries)) + 6)
 	}
+	verify_disk_usage_layout(t, &p)
 }

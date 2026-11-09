@@ -34,6 +34,9 @@ Browser :: struct {
 	header:          Header,
 	pointer:         Pointer,
 	hovered:         u32,
+	storage:         ^Storage,
+	space:           Space_Info,
+	pending_disk:    ^Disk_Operation, // Borrowed until the worker returns its result.
 }
 
 browser_message :: proc(b: ^Browser, message: string) {
@@ -42,6 +45,8 @@ browser_message :: proc(b: ^Browser, message: string) {
 }
 
 browser_destroy :: proc(b: ^Browser) {
+	storage_destroy(b.storage)
+	b.storage, b.pending_disk = nil, nil
 	header_destroy(&b.header)
 	delete(b.status_error)
 	places_destroy(&b.places)
@@ -62,12 +67,13 @@ browser_load :: proc(b: ^Browser, path: string) -> os.Error {
 		delete(absolute)
 		return read_err
 	}
-	if b.path != absolute {b.header.copied_until = 0}
+	if b.path != absolute {b.header.copied_until = 0; b.space = {}}
 	os.file_info_slice_delete(b.entries, context.allocator)
 	delete(b.path)
 	b.path, b.entries = absolute, entries
 	browser_message(b, "")
 	browser_filter(b)
+	storage_path(b.storage, b.path)
 	return nil
 }
 

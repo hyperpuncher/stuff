@@ -65,6 +65,12 @@ handle_input :: proc(
 	case .QUIT, .WINDOW_CLOSE_REQUESTED:
 		running^ = false
 		return false, nil
+	case .WINDOW_HIDDEN, .WINDOW_MINIMIZED:
+		storage_visible(b.storage, false)
+		return false, nil
+	case .WINDOW_SHOWN, .WINDOW_RESTORED:
+		storage_visible(b.storage, true)
+		return true, nil
 	case .WINDOW_EXPOSED, .WINDOW_PIXEL_SIZE_CHANGED, .WINDOW_DISPLAY_SCALE_CHANGED:
 		return true, nil
 	case .KEY_DOWN:
@@ -77,24 +83,44 @@ handle_input :: proc(
 			if b.places.focused {
 				active := places_active(&b.places, b.path)
 				if active >= 0 {b.places.selected = active}
-				places_reveal(&b.places, g.rows)
+				places_reveal(&b.places, places_geometry(g).rows)
 			}
 			return true, nil
 		}
-		selected, first, count := &b.selected, &b.first, len(b.visible)
-		if b.places.focused {selected, first, count = &b.places.selected, &b.places.first, len(b.places.entries)}
-		if selection_key(event.key.key, selected, first, count, g.rows) {return true, nil}
+		if b.places.focused && event.key.key == sdl.K_E && event.key.mod & sdl.KMOD_CTRL != {} {
+			return true, place_open(b, b.places.selected, true)
+		}
+		selected, first, count, rows := &b.selected, &b.first, len(b.visible), g.rows
+		if b.places.focused {
+			selected, first, count = &b.places.selected, &b.places.first, len(b.places.entries)
+			rows = places_geometry(g).rows
+		}
+		if selection_key(event.key.key, selected, first, count, rows) {
+			if b.places.focused && count > 0 && b.places.entries[selected^].section {
+				backward :=
+					event.key.key == sdl.K_UP ||
+					event.key.key == sdl.K_K ||
+					event.key.key == sdl.K_PAGEUP
+				direction := backward ? -1 : 1
+				next := selected^ + direction
+				if next < 0 || next >= count {next = selected^ - direction}
+				selected^ = next
+				places_reveal(&b.places, rows)
+			}
+			return true, nil
+		}
 		switch event.key.key {
 		case sdl.K_RETURN, sdl.K_L:
 			if b.places.focused {
 				if len(b.places.entries) == 0 {return true, nil}
-				return true, browser_navigate(b, b.places.entries[b.places.selected].path)
+				return true, place_open(b, b.places.selected)
 			}
 			err = browser_enter(b)
 		case sdl.K_BACKSPACE:
 			err = browser_parent(b)
 		case sdl.K_F5:
 			err = browser_load(b, b.path)
+			storage_refresh(b.storage)
 		case sdl.K_H:
 			if event.key.mod & sdl.KMOD_CTRL != {} {
 				b.show_hidden = !b.show_hidden
@@ -116,7 +142,7 @@ handle_input :: proc(
 			b.places.first = clamp(
 				b.places.first - int(amount * 3),
 				0,
-				max(0, len(b.places.entries) - g.rows),
+				max(0, len(b.places.entries) - places_geometry(g).rows),
 			)
 		} else {
 			b.first = clamp(b.first - int(amount * 3), 0, max(0, len(b.visible) - g.rows))
@@ -136,11 +162,11 @@ handle_input :: proc(
 		if x < 0 || x >= g.width {return false, nil}
 		if y >= 0 && y < g.header {return header_click(b, x, y)}
 		if x < g.sidebar {
-			index := row_at(g, y, b.places.first, len(b.places.entries))
-			if index < 0 {return false, nil}
+			index := row_at(places_geometry(g), y, b.places.first, len(b.places.entries))
+			if index < 0 || b.places.entries[index].section {return false, nil}
 			b.places.focused = true
 			b.places.selected = index
-			return true, browser_navigate(b, b.places.entries[index].path)
+			return true, place_open(b, index, place_unmount_at(b.places.entries[index], g, x))
 		}
 		if y >= g.header && y < g.header + g.row {
 			if column, ok := column_at(g, x); ok {
@@ -205,6 +231,8 @@ run :: proc() -> int {
 	if font_path == "" {return 1}
 	if !sdl.Init({.VIDEO}) {fmt.eprintln(string(sdl.GetError())); return 1}
 	places_init(&b.places)
+	b.storage = storage_start(b.path)
+	if b.storage == nil {fmt.eprintln("cannot start the storage worker")}
 	active := places_active(&b.places, b.path)
 	if active >= 0 {b.places.selected = active}
 	if !ttf.Init() {fmt.eprintln(string(sdl.GetError())); return 1}
@@ -259,6 +287,7 @@ run :: proc() -> int {
 	last_scale: f32 = 0
 	g: Geometry
 	for running {
+		dirty = storage_poll(&b) || dirty
 		dirty = file_open_poll(&b) || dirty
 		dirty = header_update(&b.header, sdl.GetTicks()) || dirty
 		if dirty {
@@ -296,7 +325,11 @@ run :: proc() -> int {
 			sdl_check(sdl.GetRenderOutputSize(renderer, &width, &height))
 			g = geometry(width, height, scale)
 			b.first = clamp(b.first, 0, max(0, len(b.visible) - g.rows))
-			b.places.first = clamp(b.places.first, 0, max(0, len(b.places.entries) - g.rows))
+			b.places.first = clamp(
+				b.places.first,
+				0,
+				max(0, len(b.places.entries) - places_geometry(g).rows),
+			)
 			commands := layout(&b, g, &painter)
 			if hover_update(&b, g) {commands = layout(&b, g, &painter)}
 			cursor_update(hand, &b, g)

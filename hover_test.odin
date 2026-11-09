@@ -61,7 +61,7 @@ hover_tracks_pointer_without_changing_selection :: proc(t: ^testing.T) {
 	)
 
 	event = sdl.Event {
-		motion = {type = .MOUSE_MOTION, x = 20, y = g.list_top + g.row / 2},
+		motion = {type = .MOUSE_MOTION, x = 20, y = places_geometry(g).list_top + g.row / 2},
 	}
 	testing.expect(t, handle_event(&b, &event, g, &running))
 	testing.expect_value(t, b.hovered, clay.ID("place", 0).id)
