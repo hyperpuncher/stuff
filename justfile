@@ -13,6 +13,10 @@ check:
 test: _dirs
 	SDL_VIDEODRIVER=dummy SDL_RENDER_DRIVER=software odin test . -out:build/stuff-tests -define:ODIN_TEST_THREADS=1
 
+# exercise real drag negotiation in a private headless Wayland compositor (labwc).
+test-drag: _dirs
+	odin test . -out:build/stuff-drag-tests -define:ODIN_TEST_THREADS=1 -define:NATIVE_WAYLAND_TESTS=true -define:ODIN_TEST_NAMES=main.native_wayland_file_drag
+
 fmt:
 	odinfmt . -w
 

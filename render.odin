@@ -238,16 +238,19 @@ window_icon :: proc(window: ^sdl.Window) {
 	_ = sdl.SetWindowIcon(window, surface)
 }
 
+icon_surface :: proc(kind: Icon, size: i32) -> ^sdl.Surface {
+	sources := ICON_SOURCES
+	svg, _ := strings.replace_all(sources[kind], "currentColor", "#ffffff", context.temp_allocator)
+	stream := sdl.IOFromConstMem(raw_data(svg), uint(len(svg)))
+	if stream == nil {return nil}
+	defer sdl.CloseIO(stream)
+	return image.LoadSizedSVG_IO(stream, size, size)
+}
+
 painter_load_icons :: proc(p: ^Painter, scale: f32) {
-	for source, kind in ICON_SOURCES {
+	for _, kind in ICON_SOURCES {
 		if p.icons[kind] != nil {sdl.DestroyTexture(p.icons[kind])}
-		// Keep upstream geometry unchanged; provide a neutral stroke color.
-		svg, _ := strings.replace_all(source, "currentColor", "#ffffff", context.temp_allocator)
-		stream := sdl.IOFromConstMem(raw_data(svg), uint(len(svg)))
-		assert(stream != nil, string(sdl.GetError()))
-		defer sdl.CloseIO(stream)
-		size := i32(icon_size(kind) * scale)
-		surface := image.LoadSizedSVG_IO(stream, size, size)
+		surface := icon_surface(kind, i32(icon_size(kind) * scale))
 		assert(surface != nil, string(sdl.GetError()))
 		defer sdl.DestroySurface(surface)
 		texture := sdl.CreateTextureFromSurface(p.renderer, surface)

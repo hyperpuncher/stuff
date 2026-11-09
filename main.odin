@@ -11,21 +11,25 @@ import sdl "vendor:sdl3"
 import ttf "vendor:sdl3/ttf"
 
 handle_event :: proc(b: ^Browser, event: ^sdl.Event, g: Geometry, running: ^bool) -> bool {
+	if file_drop_input(b, event, g) {return true}
 	pointer_changed := false
 	#partial switch event.type {
 	case .MOUSE_MOTION:
+		if file_drag_motion(b, g, event.motion.x, event.motion.y) {return true}
 		menu_changed := b.menu.active && b.menu.selected >= 0
 		if b.menu.active {b.menu.selected = -1}
 		changed := pointer_move(b, g, event.motion.x, event.motion.y)
 		if b.header.edit.dragging {path_edit_click(&b.header.edit, g, event.motion.x, true); return true}
 		return scrollbar_motion(b, g, event.motion.y) || changed || menu_changed
 	case .WINDOW_MOUSE_LEAVE, .WINDOW_FOCUS_LOST:
+		if event.type == .WINDOW_FOCUS_LOST {file_drag_cancel_press(b)}
 		cancelled := event.type == .WINDOW_FOCUS_LOST && (b.drag.active || b.menu.active)
 		if cancelled {b.drag = {}; b.menu.active = false}
 		if event.type == .WINDOW_FOCUS_LOST {b.header.edit.dragging = false}
 		b.pointer.active = false
 		return hover_update(b, g) || cancelled
 	case .KEY_DOWN:
+		file_drag_cancel_press(b)
 		pointer_changed = b.drag.active
 		b.drag = {}
 		b.pointer.active = false
@@ -171,6 +175,7 @@ handle_input :: proc(
 		browser_reveal(b, g.rows)
 		return true, err
 	case .MOUSE_BUTTON_UP:
+		if event.button.button == sdl.BUTTON_LEFT && file_drag_release(b) {return true, nil}
 		if event.button.button == sdl.BUTTON_LEFT && b.drag.active {b.drag = {}; return true, nil}
 		return false, nil
 	case .MOUSE_WHEEL:
@@ -227,7 +232,7 @@ handle_input :: proc(
 		if index < 0 {return false, nil}
 		b.places.focused = false
 		mods := sdl.GetModState()
-		selection_click(b, index, mods & sdl.KMOD_CTRL != {}, mods & sdl.KMOD_SHIFT != {})
+		file_drag_press(b, g, index, event, mods)
 		if event.button.clicks == 2 &&
 		   mods & (sdl.KMOD_CTRL | sdl.KMOD_SHIFT) == {} {err = browser_enter(b)}
 		return true, err
@@ -331,12 +336,15 @@ run :: proc() -> int {
 	)
 	defer clay.SetCurrentContext(nil)
 	clay.SetMeasureTextFunction(measure_text, font)
+	b.file_drag = file_drag_init(window)
+	defer {file_drag_destroy(b.file_drag); b.file_drag = nil}
 
 	running, dirty := true, true
 	shown := false
 	last_scale: f32 = 0
 	g: Geometry
 	for running {
+		dirty = file_drag_poll(&b) || dirty
 		dirty = storage_poll(&b) || dirty
 		dirty = file_open_poll(&b) || dirty
 		dirty = header_update(&b.header, sdl.GetTicks()) || dirty

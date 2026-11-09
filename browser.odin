@@ -28,6 +28,7 @@ Browser :: struct {
 	marks:                  map[int]bool,
 	marked_bytes:           i64,
 	show_hidden:            bool,
+	file_drag:              ^File_Drag,
 	search:                 string, // Owned filename query; kept while focus is on the results.
 	visible_bytes:          i64,
 	sort_column:            Column,

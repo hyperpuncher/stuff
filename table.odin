@@ -242,7 +242,7 @@ layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.Ren
 				if clay.UI()(
 				{
 					layout = list_layout(g),
-					backgroundColor = theme.background,
+					backgroundColor = hover_color(b, clay.ID("files-viewport"), theme.background),
 					cornerRadius = {topLeft = 10 * g.scale, bottomLeft = 10 * g.scale},
 				},
 				) {

@@ -86,6 +86,19 @@ file_operation_run :: proc(op: ^File_Operation) {
 	if op.kind ==
 	   .Open_With {op.error = open_with_run(op); if op.error != "" {op.failed = 1}; return}
 	if op.history != .Record {file_history_run(op); return}
+	if op.kind == .Copy {
+		info, err := os.stat(op.target, context.allocator)
+		if err == nil && info.type != .Directory {err = .Invalid_Path}
+		if err != nil {
+			op.failed = len(op.sources)
+			op.error = fmt.aprintf("%s: %s", op.target, os.error_string(err))
+			os.file_info_delete(info, context.allocator)
+			return
+		}
+		delete(op.target)
+		op.target = strings.clone(info.fullpath)
+		os.file_info_delete(info, context.allocator)
+	}
 	buffer: []u8
 	if op.kind == .Copy {buffer = make([]u8, 1024 * 1024)}
 	defer delete(buffer)
