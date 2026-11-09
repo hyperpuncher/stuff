@@ -30,22 +30,44 @@ verify_theme_switch :: proc(t: ^testing.T, p: ^Painter) {
 	for item in cases {
 		testing.expect_value(t, theme_apply(p, item.system), item.changed)
 		commands := layout(&b, g, p)
-		separators := 0
+		separators: [dynamic]clay.BoundingBox
+		defer delete(separators)
 		for i in 0 ..< commands.length {
 			cmd := commands.internalArray[i]
-			if cmd.commandType != .Text || cmd.boundingBox.y < g.height - g.footer {continue}
-			data := cmd.renderData.text
-			value := string(data.stringContents.chars[:data.stringContents.length])
-			if value == "|" {
-				separators += 1
+			if cmd.boundingBox.y < g.height - g.footer {continue}
+			if cmd.commandType == .Text {
+				data := cmd.renderData.text
+				value := string(data.stringContents.chars[:data.stringContents.length])
+				testing.expect(t, value != "|")
+				testing.expect_value(t, data.textColor, theme.muted)
+			}
+			if cmd.commandType == .Rectangle &&
+			   (cmd.id == clay.ID("footer-separator", 0).id ||
+					   cmd.id == clay.ID("footer-separator", 1).id) {
+				append(&separators, cmd.boundingBox)
+				testing.expect_value(t, cmd.boundingBox.width, f32(1))
+				color := cmd.renderData.rectangle.backgroundColor
 				testing.expect(
 					t,
-					abs(data.textColor[0] - theme.panel[0]) < abs(theme.muted[0] - theme.panel[0]),
+					abs(color[0] - theme.panel[0]) < abs(theme.muted[0] - theme.panel[0]),
 				)
-			} else {testing.expect_value(t, data.textColor, theme.muted)}
+			}
 		}
-		testing.expect_value(t, separators, 2)
+		testing.expect_value(t, len(separators), 2)
 		paint(p, commands, 960, 640)
+		for box in separators {
+			area := sdl.Rect{i32(box.x) - 1, i32(box.y + box.height / 2), 4, 1}
+			surface := sdl.RenderReadPixels(p.renderer, &area)
+			if surface == nil {testing.fail_now(t, string(sdl.GetError()))}
+			defer sdl.DestroySurface(surface)
+			filled := 0
+			for x in 0 ..< 4 {
+				r, green, blue, alpha: u8
+				sdl_check(sdl.ReadSurfacePixel(surface, i32(x), 0, &r, &green, &blue, &alpha))
+				if r != u8(theme.panel[0]) {filled += 1}
+			}
+			testing.expect_value(t, filled, 1)
+		}
 		for icon, kind in p.icons {
 			testing.expect_value(t, icon, icons[kind])
 			r, green, blue: u8
