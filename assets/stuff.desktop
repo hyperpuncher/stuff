@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=stuff
+Comment=lightweight file manager
+Exec=stuff %f
+Icon=stuff
+Terminal=false
+Categories=System;FileTools;FileManager;
+MimeType=inode/directory;

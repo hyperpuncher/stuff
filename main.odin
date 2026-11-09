@@ -190,6 +190,7 @@ run :: proc() -> int {
 		}
 		path = arg
 	}
+	_ = sdl.SetAppMetadata("stuff", nil, "stuff")
 	b: Browser
 	defer {
 		browser_destroy(&b)
@@ -223,6 +224,7 @@ run :: proc() -> int {
 	}
 	defer sdl.DestroyWindow(window)
 	defer sdl.DestroyRenderer(renderer)
+	window_icon(window)
 	hand := sdl.CreateSystemCursor(.POINTER)
 	defer if hand != nil {sdl.DestroyCursor(hand)}
 	font_c := strings.clone_to_cstring(font_path)

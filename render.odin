@@ -207,6 +207,18 @@ sdl_check :: proc(ok: bool) {
 	if !ok {panic(string(sdl.GetError()))}
 }
 
+window_icon :: proc(window: ^sdl.Window) {
+	svg :: #load("assets/stuff.svg")
+	stream := sdl.IOFromConstMem(raw_data(svg), uint(len(svg)))
+	assert(stream != nil, string(sdl.GetError()))
+	defer sdl.CloseIO(stream)
+	surface := image.LoadSizedSVG_IO(stream, 256, 256)
+	assert(surface != nil, string(sdl.GetError()))
+	defer sdl.DestroySurface(surface)
+	// Compositors without the icon protocol use the matching desktop entry.
+	_ = sdl.SetWindowIcon(window, surface)
+}
+
 painter_load_icons :: proc(p: ^Painter, scale: f32) {
 	for source, kind in ICON_SOURCES {
 		if p.icons[kind] != nil {sdl.DestroyTexture(p.icons[kind])}
