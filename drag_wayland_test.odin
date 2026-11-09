@@ -307,9 +307,12 @@ native_wayland_file_drag :: proc(t: ^testing.T) {
 		sdl.DestroyProcess(process)
 	}
 	ready := false
-	for _ in 0 ..< 100 {
+	deadline := sdl.GetTicks() + 10000
+	for sdl.GetTicks() < deadline {
 		info, socket_err := os.lstat(fmt.tprintf("%s/wayland-0", root), context.allocator)
 		if socket_err == nil {os.file_info_delete(info, context.allocator); ready = true; break}
+		code: c.int
+		if sdl.WaitProcess(process, false, &code) {break}
 		time.sleep(20 * time.Millisecond)
 	}
 	if !ready {
@@ -431,7 +434,7 @@ native_wayland_file_drag :: proc(t: ^testing.T) {
 	_ = wl_display_flush(b.file_drag.display)
 	copied := fmt.aprintf("%s/dest/source.txt", files)
 	defer delete(copied)
-	deadline := sdl.GetTicks() + 5000
+	deadline = sdl.GetTicks() + 5000
 	for sdl.GetTicks() < deadline &&
 	    (!os.exists(copied) ||
 			    b.pending_files !=
