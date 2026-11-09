@@ -186,4 +186,37 @@ verify_path_editor_rendering :: proc(t: ^testing.T, p: ^Painter) {
 	sdl_check(sdl.StartTextInput(window))
 	path_edit_ime_area(&b.header.edit, g, window)
 	sdl_check(sdl.StopTextInput(window))
+	b.header.edit.cursor, b.header.edit.anchor = len(b.header.edit.value), len(b.header.edit.value)
+	_ = layout(&b, g, p)
+	caret := clay.GetElementData(clay.ID("path-edit-caret"))
+	testing.expect(
+		t,
+		caret.found &&
+		caret.boundingBox.x >= entry.boundingBox.x &&
+		caret.boundingBox.x < entry.boundingBox.x + entry.boundingBox.width,
+	)
+
+	path_edit_start(&b)
+	path_edit_replace(&b, "/home/igor")
+	origin: clay.BoundingBox
+	for cursor in 0 ..= len(b.header.edit.value) {
+		b.header.edit.cursor, b.header.edit.anchor = cursor, cursor
+		line_commands := layout(&b, g, p)
+		text := clay.GetElementData(clay.ID("path-edit-text"))
+		testing.expect(t, text.found)
+		if cursor == 0 {origin = text.boundingBox}
+		testing.expect_value(t, text.boundingBox, origin)
+		whole_lines := 0
+		for i in 0 ..< line_commands.length {
+			cmd := line_commands.internalArray[i]
+			if cmd.commandType != .Text {continue}
+			contents := cmd.renderData.text.stringContents
+			if string(contents.chars[:contents.length]) == b.header.edit.value {whole_lines += 1}
+		}
+		testing.expect_value(t, whole_lines, 1)
+		paint(p, line_commands, 960, 640)
+	}
+	b.header.edit.anchor = 0
+	_ = layout(&b, g, p)
+	testing.expect_value(t, clay.GetElementData(clay.ID("path-edit-text")).boundingBox, origin)
 }

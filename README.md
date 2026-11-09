@@ -34,7 +34,7 @@ just test
 
 font size is read at startup from the portal's `org.gnome.desktop.interface` settings. other desktops use a 14-logical-pixel fallback. display scaling applies in both cases.
 
-press `ctrl+l` to select and edit the path. `enter` opens the folder; `esc` restores the breadcrumbs. relative paths use the current folder, and `~/` uses the home folder.
+press `ctrl+l` to select and edit the path. `enter` opens the folder; `esc` restores the breadcrumbs. relative paths use the current folder, and `~/` uses the home folder. `ctrl+left/right` moves by word; `ctrl+backspace/delete` deletes by word. hold `shift` to extend selection.
 
 ## file actions
 

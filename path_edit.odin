@@ -3,6 +3,7 @@ package main
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "core:unicode"
 import "core:unicode/utf8"
 import clay "vendor/clay"
 import sdl "vendor:sdl3"
@@ -39,7 +40,8 @@ path_edit_box :: proc(g: Geometry) -> clay.BoundingBox {
 	return {4 * g.scale, 4 * g.scale, g.width - 8 * g.scale, g.header - 8 * g.scale}
 }
 
-path_edit_boundary :: proc(value: string, cursor: int, forward: bool) -> int {
+path_edit_boundary :: proc(value: string, cursor: int, forward: bool, word := false) -> int {
+	if word {return path_edit_word_boundary(value, cursor, forward)}
 	previous := 0
 	it := utf8.decode_grapheme_iterator_make(value)
 	for _, cluster in utf8.decode_grapheme_iterate(&it) {
@@ -49,6 +51,27 @@ path_edit_boundary :: proc(value: string, cursor: int, forward: bool) -> int {
 		previous = next
 	}
 	return forward ? len(value) : 0
+}
+
+// Move to a word end going forward, or a word start going backward. Keep
+// underscores in words; punctuation and whitespace separate path components.
+path_edit_word_boundary :: proc(value: string, cursor: int, forward: bool) -> int {
+	start, in_word := 0, false
+	it := utf8.decode_grapheme_iterator_make(value)
+	for _, cluster in utf8.decode_grapheme_iterate(&it) {
+		r, _ := utf8.decode_rune_in_string(cluster.text)
+		separator := unicode.is_space(r) || unicode.is_punct(r) && r != '_'
+		if forward {
+			if cluster.byte_index < cursor {continue}
+			if separator && in_word {return cluster.byte_index}
+			if !separator {in_word = true}
+		} else {
+			if cluster.byte_index >= cursor {break}
+			if !separator && !in_word {start = cluster.byte_index}
+			in_word = !separator
+		}
+	}
+	return forward ? len(value) : start
 }
 
 path_edit_replace :: proc(b: ^Browser, value: string) {
@@ -132,7 +155,7 @@ path_edit_input :: proc(
 		key := event.key.key
 		if ctrl && key == sdl.K_A {edit.anchor, edit.cursor = 0, len(edit.value); return true, nil}
 		copy := ctrl && key == sdl.K_C || ctrl && !shift && key == sdl.K_INSERT
-		cut := ctrl && key == sdl.K_X || shift && key == sdl.K_DELETE
+		cut := ctrl && key == sdl.K_X || shift && !ctrl && key == sdl.K_DELETE
 		paste := ctrl && key == sdl.K_V || shift && !ctrl && key == sdl.K_INSERT
 		if copy || cut {if path_edit_copy(b) && cut {path_edit_replace(b, "")}; return true, nil}
 		if paste {
@@ -161,11 +184,11 @@ path_edit_input :: proc(
 			return true, err
 		case sdl.K_LEFT, sdl.K_RIGHT, sdl.K_HOME, sdl.K_END:
 			if key ==
-			   sdl.K_HOME {edit.cursor = 0} else if key == sdl.K_END {edit.cursor = len(edit.value)} else if !shift && edit.cursor != edit.anchor {edit.cursor = key == sdl.K_LEFT ? min(edit.cursor, edit.anchor) : max(edit.cursor, edit.anchor)} else {edit.cursor = path_edit_boundary(edit.value, edit.cursor, key == sdl.K_RIGHT)}
+			   sdl.K_HOME {edit.cursor = 0} else if key == sdl.K_END {edit.cursor = len(edit.value)} else if !shift && edit.cursor != edit.anchor {edit.cursor = key == sdl.K_LEFT ? min(edit.cursor, edit.anchor) : max(edit.cursor, edit.anchor)} else {edit.cursor = path_edit_boundary(edit.value, edit.cursor, key == sdl.K_RIGHT, ctrl)}
 			if !shift {edit.anchor = edit.cursor}
 		case sdl.K_BACKSPACE, sdl.K_DELETE:
 			if edit.cursor ==
-			   edit.anchor {edit.anchor = path_edit_boundary(edit.value, edit.cursor, key == sdl.K_DELETE)}
+			   edit.anchor {edit.anchor = path_edit_boundary(edit.value, edit.cursor, key == sdl.K_DELETE, ctrl)}
 			path_edit_replace(b, "")
 		}
 		return true, nil // File actions and navigation stay inactive while editing.
@@ -203,6 +226,15 @@ path_edit_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 	cursor := path_edit_caret(edit)
 	width := box.width - 16 * g.scale
 	edit.offset = max(0, clamp(edit.offset, cursor - width + 2 * g.scale, cursor))
+	display := edit.value
+	selection_color := theme.selected
+	if edit.composition != "" {
+		display = fmt.tprintf("%s%s%s", edit.value[:low], edit.composition, edit.value[high:])
+		high = low + len(edit.composition)
+		selection_color = theme.inactive_selection
+	}
+	prefix := f32(text_width(p.font, display[:low]))
+	selection_width := f32(text_width(p.font, display[:high])) - prefix
 	if clay.UI()(
 	{
 		layout = {
@@ -216,37 +248,72 @@ path_edit_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 			layout = {
 				sizing = {clay.SizingGrow(), clay.SizingGrow()},
 				padding = {left = u16(8 * g.scale), right = u16(8 * g.scale)},
-				childAlignment = {y = .Center},
 			},
 			backgroundColor = theme.background,
 			cornerRadius = clay.CornerRadiusAll(5 * g.scale),
 			clip = {horizontal = true, vertical = true, childOffset = {-edit.offset, 0}},
 		},
 		) {
-			if edit.composition != "" {
-				label(edit.value[:low], theme.text, g.font_size)
-				label(edit.composition, theme.muted, g.font_size)
-				label(edit.value[high:], theme.text, g.font_size)
-			} else {
-				label(edit.value[:low], theme.text, g.font_size)
+			if clay.UI()(
+			{
+				layout = {
+					sizing = {
+						clay.SizingFixed(max(width, f32(text_width(p.font, display)))),
+						clay.SizingGrow(),
+					},
+					childAlignment = {y = .Center},
+				},
+			},
+			) {
 				if low != high {
 					if clay.UI()(
-					{backgroundColor = theme.selected},
-					) {label(edit.value[low:high], theme.text, g.font_size)}
-				} else {
+					{layout = {sizing = {clay.SizingFixed(prefix), clay.SizingFixed(1)}}},
+					) {}
 					if clay.UI()(
 					{
 						layout = {
 							sizing = {
-								clay.SizingFixed(g.scale),
+								clay.SizingFixed(selection_width),
+								clay.SizingFixed(f32(ttf.GetFontHeight(p.font))),
+							},
+						},
+						backgroundColor = selection_color,
+					},
+					) {}
+				}
+				// Shape the complete line once. Selection and caret never split or move it.
+				if clay.UI(clay.ID("path-edit-text"))(
+				{
+					floating = {
+						attachTo = .Parent,
+						clipTo = .AttachedParent,
+						zIndex = 1,
+						attachment = {element = .LeftCenter, parent = .LeftCenter},
+						pointerCaptureMode = .Passthrough,
+					},
+				},
+				) {label(display, theme.text, g.font_size)}
+				if low == high || edit.composition != "" {
+					if clay.UI(clay.ID("path-edit-caret"))(
+					{
+						layout = {
+							sizing = {
+								clay.SizingFixed(1),
 								clay.SizingFixed(g.font_size + 2 * g.scale),
 							},
+						},
+						floating = {
+							attachTo = .Parent,
+							clipTo = .AttachedParent,
+							zIndex = 2,
+							offset = {cursor, 0},
+							attachment = {element = .LeftCenter, parent = .LeftCenter},
+							pointerCaptureMode = .Passthrough,
 						},
 						backgroundColor = theme.text,
 					},
 					) {}
 				}
-				label(edit.value[high:], theme.text, g.font_size)
 			}
 		}
 	}
