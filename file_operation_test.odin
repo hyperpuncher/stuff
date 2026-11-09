@@ -183,3 +183,27 @@ background_paste_does_not_change_navigation :: proc(t: ^testing.T) {
 	testing.expect_value(t, b.status_error, "")
 	testing.expect(t, os.exists(fmt.tprintf("%s/file", dest)))
 }
+
+@(test)
+trash_accepts_owned_readable_directories_but_rejects_other_writers :: proc(t: ^testing.T) {
+	root, err := os.make_directory_temp("/tmp", "stuff-trash-modes-", context.allocator)
+	if err != nil {testing.fail_now(t, "cannot create permission fixture")}
+	defer delete(root)
+	defer os.remove_all(root)
+	home, first, second :=
+		fmt.aprintf("%s/data/Trash", root),
+		fmt.aprintf("%s/first", root),
+		fmt.aprintf("%s/second", root)
+	defer delete(home)
+	defer delete(first)
+	defer delete(second)
+	testing.expect(t, os.write_entire_file(first, "one") == nil)
+	testing.expect(t, os.write_entire_file(second, "two") == nil)
+	testing.expect(t, trash_file(first, home, nil) == nil)
+	for path in ([?]string{home, fmt.tprintf("%s/files", home), fmt.tprintf("%s/info", home)}) {testing.expect(t, os.chmod(path, os.perm(0o755)) == nil)}
+	testing.expect(t, trash_file(second, home, nil) == nil)
+	testing.expect(t, os.write_entire_file(second, "keep") == nil)
+	testing.expect(t, os.chmod(fmt.tprintf("%s/info", home), os.perm(0o777)) == nil)
+	testing.expect(t, trash_file(second, home, nil) != nil)
+	testing.expect(t, os.exists(second))
+}

@@ -146,6 +146,8 @@ local_trash_view_uses_relative_metadata_without_creating_directories :: proc(t: 
 	b: Browser
 	defer browser_destroy(&b)
 	b.path = strings.clone(TRASH_PATH)
+	// FAT/exFAT mount masks can expose these owned directories as 0755.
+	for path in ([?]string{local, fmt.tprintf("%s/files", local), fmt.tprintf("%s/info", local)}) {testing.expect(t, os.chmod(path, os.perm(0o755)) == nil)}
 	trash_view_test_read(t, &b, local, root, true)
 	testing.expect_value(t, len(b.entries), 1)
 	testing.expect_value(t, b.entries[0].name, "file")

@@ -17,8 +17,9 @@ trash_home_path :: proc() -> string {
 	return fmt.aprintf("%s/.local/share/Trash", home)
 }
 
-// Private trash directories must belong to this user. Never follow a link in
-// place of a trash directory. Subsequent access stays relative to the open fd.
+// Trash directories must belong to this user and must not be writable by other
+// users. FAT/exFAT can report 0755 for a requested 0700 directory. Never follow
+// a link in place of a trash directory. Access stays relative to the open fd.
 trash_private_at :: proc(parent: linux.Fd, name: cstring) -> (fd: linux.Fd, err: os.Error) {
 	mkdir_err := linux.mkdirat(parent, name, transmute(linux.Mode)u32(0o700))
 	if mkdir_err != .NONE && mkdir_err != .EEXIST {return -1, mkdir_err}
@@ -32,7 +33,7 @@ trash_private_open_at :: proc(parent: linux.Fd, name: cstring) -> (fd: linux.Fd,
 	st: linux.Stat
 	stat_err := linux.fstat(fd, &st)
 	if stat_err != .NONE {linux.close(fd); return -1, stat_err}
-	if st.uid != linux.getuid() || transmute(u32)st.mode & 0o777 != 0o700 {
+	if st.uid != linux.getuid() || transmute(u32)st.mode & 0o022 != 0 {
 		linux.close(fd)
 		return -1, linux.Errno.EACCES
 	}
