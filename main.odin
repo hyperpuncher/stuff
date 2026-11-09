@@ -296,7 +296,8 @@ run :: proc() -> int {
 	defer if hand != nil {sdl.DestroyCursor(hand)}
 	font_c := strings.clone_to_cstring(font_path)
 	defer delete(font_c)
-	font := ttf.OpenFont(font_c, 16)
+	font_points := desktop_font_points()
+	font := ttf.OpenFont(font_c, font_points)
 	if font ==
 	   nil {fmt.eprintfln("cannot load font %s: %s", font_path, string(sdl.GetError())); return 1}
 	defer ttf.CloseFont(font)
@@ -343,7 +344,7 @@ run :: proc() -> int {
 						i32(math.ceil(MIN_WINDOW_HEIGHT * scale / density)),
 					),
 				)
-				sdl_check(ttf.SetFontSize(font, f32(u16(16 * scale))))
+				sdl_check(ttf.SetFontSizeDPI(font, font_points * scale, 96, 96))
 				clay.ResetMeasureTextCache()
 				painter_load_icons(&painter, scale)
 				last_scale = scale
@@ -362,7 +363,13 @@ run :: proc() -> int {
 				continue // Query the configured size and scale before the first frame.
 			}
 			sdl_check(sdl.GetRenderOutputSize(renderer, &width, &height))
-			g = geometry(width, height, scale)
+			g = geometry(
+				width,
+				height,
+				scale,
+				font_points * (96.0 / 72.0),
+				f32(ttf.GetFontHeight(font)) / scale,
+			)
 			b.first = clamp(b.first, 0, max(0, len(b.visible) - g.rows))
 			b.places.first = clamp(
 				b.places.first,
@@ -384,13 +391,14 @@ run :: proc() -> int {
 					if sdl.GetWindowSurfaceVSync(window, &surface_vsync) {vsync = surface_vsync}
 				}
 				fmt.printfln(
-					"rendered %dx%d at scale %.2f with %s; vsync=%d; %d visible text slots",
+					"rendered %dx%d at scale %.2f with %s; vsync=%d; %d visible text slots; font=%.2fpt",
 					width,
 					height,
 					scale,
 					string(sdl.GetRendererName(renderer)),
 					vsync,
 					len(painter.slots),
+					font_points,
 				)
 				break
 			}

@@ -233,7 +233,7 @@ menu_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 			},
 			) {
 				icon_element(p, icons[action], g.scale)
-				label(name, enabled ? theme.text : theme.muted, g.scale)
+				label(name, enabled ? theme.text : theme.muted, g.font_size)
 			}
 		}
 	}

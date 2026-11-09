@@ -167,7 +167,11 @@ places_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 								},
 							},
 							) {
-								label(fit_label(p.font, place.label, width), text_color, g.scale)
+								label(
+									fit_label(p.font, place.label, width),
+									text_color,
+									g.font_size,
+								)
 								if place.disk && place.space.valid && place.space.total > 0 {
 									if clay.UI()(
 									{

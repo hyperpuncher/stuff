@@ -11,19 +11,25 @@ MIN_WINDOW_HEIGHT :: 240
 
 Geometry :: struct {
 	width, height, scale, header, footer, row, list_top: f32,
-	padding, gap, sidebar, list_padding:                 f32,
+	padding, gap, sidebar, list_padding, font_size:      f32,
 	columns:                                             [Column]f32,
 	rows:                                                int,
 }
 
-geometry :: proc(width, height: i32, scale: f32) -> Geometry {
+geometry :: proc(
+	width, height: i32,
+	scale: f32,
+	font_size: f32 = 14,
+	font_height: f32 = 0,
+) -> Geometry {
 	g := Geometry {
 		width        = f32(width),
 		height       = f32(height),
 		scale        = scale,
-		header       = 36 * scale,
-		footer       = 40 * scale,
-		row          = 32 * scale,
+		header       = max(36, font_height + 12) * scale,
+		footer       = max(40, font_height + 12) * scale,
+		row          = max(32, font_height + 10) * scale,
+		font_size    = font_size * scale,
 		padding      = 16 * scale,
 		gap          = 24 * scale,
 		sidebar      = SIDEBAR_WIDTH * scale,
@@ -91,8 +97,8 @@ column_layout :: proc(g: Geometry, column: Column) -> clay.LayoutConfig {
 	}
 }
 
-label :: proc(value: string, color: clay.Color, scale: f32) {
-	clay.Text(value, {textColor = color, fontSize = u16(16 * scale), wrapMode = .None})
+label :: proc(value: string, color: clay.Color, font_size: f32) {
+	clay.Text(value, {textColor = color, fontSize = u16(font_size), wrapMode = .None})
 }
 
 icon_size :: proc(kind: Icon) -> f32 {return kind == .Unmount ? 12 : 18}
@@ -136,7 +142,7 @@ table_header :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 				}
 				color := theme.muted
 				if column == b.sort_column || b.hovered == id.id {color = theme.text}
-				label(name, color, g.scale)
+				label(name, color, g.font_size)
 				if column == b.sort_column {
 					kind: Icon = .SortAscending
 					if b.descending {kind = .SortDescending}
@@ -188,13 +194,13 @@ table_row :: proc(b: ^Browser, index: int, g: Geometry, p: ^Painter) {
 				label(
 					fit_label(p.font, entry.name, g.columns[.Name] - 30 * g.scale, middle = true),
 					theme.text,
-					g.scale,
+					g.font_size,
 				)
 			}
 			if clay.UI()({layout = column_layout(g, .Size)}) {
 				value := "—"
 				if entry.type == .Regular {value = format_size(entry.size)}
-				label(fit_label(p.font, value, g.columns[.Size]), theme.muted, g.scale)
+				label(fit_label(p.font, value, g.columns[.Size]), theme.muted, g.font_size)
 			}
 			if clay.UI()({layout = column_layout(g, .Modified)}) {
 				label(
@@ -204,7 +210,7 @@ table_row :: proc(b: ^Browser, index: int, g: Geometry, p: ^Painter) {
 						g.columns[.Modified],
 					),
 					theme.muted,
-					g.scale,
+					g.font_size,
 				)
 			}
 		}
@@ -242,7 +248,7 @@ layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.Ren
 					if clay.UI(clay.ID("files-viewport"))(viewport_config()) {
 						if len(b.visible) == 0 {
 							if clay.UI()({layout = {padding = clay.PaddingAll(u16(g.padding))}}) {
-								label("this folder is empty", theme.muted, g.scale)
+								label("this folder is empty", theme.muted, g.font_size)
 							}
 						}
 						for i in b.first ..< min(b.first + g.rows + 1, len(b.visible)) {table_row(b, i, g, p)}
@@ -280,9 +286,9 @@ layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.Ren
 				width -= f32(text_width(p.font, free_space)) + g.gap
 			}
 			if clay.UI()({layout = {sizing = {width = clay.SizingGrow()}}}) {
-				label(fit_label(p.font, summary, width), color, g.scale)
+				label(fit_label(p.font, summary, width), color, g.font_size)
 			}
-			if free_space != "" {label(free_space, theme.muted, g.scale)}
+			if free_space != "" {label(free_space, theme.muted, g.font_size)}
 		}
 	}
 	menu_layout(b, g, p)

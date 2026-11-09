@@ -136,7 +136,7 @@ header_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 					layout = {
 						sizing = {
 							clay.SizingFixed(f32(text_width(p.font, value)) + 12 * g.scale),
-							clay.SizingFixed(28 * g.scale),
+							clay.SizingFixed(g.header - 8 * g.scale),
 						},
 						padding = {left = u16(6 * g.scale), right = u16(6 * g.scale)},
 						childAlignment = {y = .Center},
@@ -144,7 +144,7 @@ header_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 					backgroundColor = hover_color(b, clay.ID("crumb", u32(i)), {}),
 					cornerRadius = clay.CornerRadiusAll(5 * g.scale),
 				},
-				) {label(value, color, g.scale)}
+				) {label(value, color, g.font_size)}
 			}
 		}
 		if clay.UI(clay.ID("copy_path"))(

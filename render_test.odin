@@ -163,7 +163,7 @@ large_directory_layout :: proc(t: ^testing.T) {
 	defer delete(path)
 	cpath := strings.clone_to_cstring(path)
 	defer delete(cpath)
-	font := ttf.OpenFont(cpath, 16)
+	font := ttf.OpenFont(cpath, 14)
 	if font == nil {testing.fail_now(t, string(sdl.GetError()))}
 	defer ttf.CloseFont(font)
 	verify_label_fitting(t, font)

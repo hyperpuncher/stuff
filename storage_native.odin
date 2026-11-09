@@ -62,6 +62,7 @@ foreign dbus_lib {
 	dbus_connection_read_write :: proc(bus: ^Bus, timeout: c.int) -> u32 ---
 	dbus_connection_get_dispatch_status :: proc(bus: ^Bus) -> c.int ---
 	dbus_connection_dispatch :: proc(bus: ^Bus) -> c.int ---
+	dbus_connection_send_with_reply_and_block :: proc(bus: ^Bus, message: ^Bus_Message, timeout: c.int, error: rawptr) -> ^Bus_Message ---
 	dbus_connection_send_with_reply :: proc(bus: ^Bus, message: ^Bus_Message, pending: ^^Bus_Pending, timeout: c.int) -> u32 ---
 	dbus_connection_flush :: proc(bus: ^Bus) ---
 	dbus_pending_call_cancel :: proc(pending: ^Bus_Pending) ---

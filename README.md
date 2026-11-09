@@ -14,6 +14,7 @@ lightweight file manager for linux
 - clickable path breadcrumbs and a copy-path button
 - open files with their default system application
 - system monospace font and neutral lucide icons
+- desktop font size and text scaling where the settings portal provides them
 
 ## built with
 
@@ -30,6 +31,8 @@ just build
 just run
 just test
 ```
+
+font size is read at startup from the portal's `org.gnome.desktop.interface` settings. other desktops use a 14-logical-pixel fallback. display scaling applies in both cases.
 
 ## file actions
 
