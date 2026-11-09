@@ -83,6 +83,8 @@ file_operation_failed :: proc(op: ^File_Operation, path: string, err: os.Error) 
 
 file_operation_run :: proc(op: ^File_Operation) {
 	if op.kind == .List_Trash {trash_view_read(op); return}
+	if op.kind ==
+	   .Open_With {op.error = open_with_run(op); if op.error != "" {op.failed = 1}; return}
 	if op.history != .Record {file_history_run(op); return}
 	buffer: []u8
 	if op.kind == .Copy {buffer = make([]u8, 1024 * 1024)}
@@ -136,6 +138,7 @@ file_operation_apply :: proc(b: ^Browser, op: ^File_Operation) -> bool {
 	if op.kind == .List_Trash {return trash_view_apply(b, op)}
 	if b.pending_files != op {return false}
 	b.pending_files = nil
+	if op.kind == .Open_With {if op.error != "" {browser_message(b, op.error)}; return true}
 	renamed_target := ""
 	if op.kind == .Rename && len(b.visible) > 0 {
 		changes := op.history == .Record ? op.changes : op.applied

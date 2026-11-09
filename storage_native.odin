@@ -3,7 +3,7 @@ package main
 
 import "core:c"
 
-// Only the public libudev and libdbus APIs needed by the storage worker.
+// Public libudev and libdbus APIs used by the native workers.
 foreign import udev_lib "system:udev"
 foreign import dbus_lib "system:dbus-1"
 
@@ -55,6 +55,12 @@ Bus_Iter :: struct {
 foreign dbus_lib {
 	dbus_threads_init_default :: proc() -> u32 ---
 	dbus_bus_get_private :: proc(kind: c.int, error: rawptr) -> ^Bus ---
+	dbus_bus_get_unique_name :: proc(bus: ^Bus) -> cstring ---
+	dbus_bus_add_match :: proc(bus: ^Bus, rule: cstring, error: rawptr) ---
+	dbus_connection_add_filter :: proc(bus: ^Bus, callback: proc "c" (bus: ^Bus, message: ^Bus_Message, data: rawptr) -> c.int, data, free_data: rawptr) -> u32 ---
+	dbus_connection_remove_filter :: proc(bus: ^Bus, callback: proc "c" (bus: ^Bus, message: ^Bus_Message, data: rawptr) -> c.int, data: rawptr) ---
+	dbus_message_is_signal :: proc(message: ^Bus_Message, interface, name: cstring) -> u32 ---
+	dbus_message_get_path :: proc(message: ^Bus_Message) -> cstring ---
 	dbus_connection_set_exit_on_disconnect :: proc(bus: ^Bus, exit: u32) ---
 	dbus_connection_close :: proc(bus: ^Bus) ---
 	dbus_connection_unref :: proc(bus: ^Bus) ---

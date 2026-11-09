@@ -282,7 +282,7 @@ layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.Ren
 			if b.pending_files != nil {
 				op := b.pending_files
 				verb :=
-					op.kind == .Copy ? "copying" : op.kind == .Rename ? "renaming" : op.kind == .New_Folder ? "creating" : op.kind == .Restore ? "restoring" : "moving to trash:"
+					op.kind == .Copy ? "copying" : op.kind == .Rename ? "renaming" : op.kind == .New_Folder ? "creating" : op.kind == .Restore ? "restoring" : op.kind == .Open_With ? "opening" : "moving to trash:"
 				if op.history != .Record {verb = op.history == .Undo ? "undoing" : "redoing"}
 				summary = fmt.tprintf("%s %d items…", verb, op.count)
 			}
