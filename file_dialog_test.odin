@@ -117,9 +117,13 @@ verify_file_dialog_rendering :: proc(t: ^testing.T, p: ^Painter) {
 	)
 	field := clay.GetElementData(clay.ID("path-edit"))
 	testing.expect_value(t, field.boundingBox, path_edit_box(g, .Rename))
+	testing.expect_value(t, field.boundingBox.x - box.x, 8 * g.scale)
+	testing.expect_value(t, field.boundingBox.y - box.y, 8 * g.scale)
 	for name in ([?]string{"file-dialog-cancel", "file-dialog-submit"}) {
 		button := clay.GetElementData(clay.ID(name))
 		testing.expect(t, button.found)
+		if name ==
+		   "file-dialog-submit" {testing.expect_value(t, field.boundingBox.x + field.boundingBox.width, button.boundingBox.x + button.boundingBox.width)}
 	}
 	b.header.edit.anchor = b.header.edit.cursor
 	commands = layout(&b, g, p)

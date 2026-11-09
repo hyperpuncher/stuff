@@ -48,9 +48,9 @@ path_edit_box :: proc(g: Geometry, mode: Edit_Mode = .Path) -> clay.BoundingBox 
 	if mode != .Path {
 		box := file_dialog_box(g)
 		return {
-			box.x + 12 * g.scale,
-			box.y + 12 * g.scale,
-			box.width - 24 * g.scale,
+			box.x + 8 * g.scale,
+			box.y + 8 * g.scale,
+			box.width - 16 * g.scale,
 			g.header - 8 * g.scale,
 		}
 	}
@@ -311,8 +311,11 @@ path_edit_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 	if clay.UI()(
 	{
 		layout = {
-			sizing = {clay.SizingGrow(), clay.SizingFixed(g.header)},
-			padding = clay.PaddingAll(u16(4 * g.scale)),
+			sizing = {
+				clay.SizingGrow(),
+				clay.SizingFixed(edit.mode == .Path ? g.header : g.header - 8 * g.scale),
+			},
+			padding = clay.PaddingAll(edit.mode == .Path ? u16(4 * g.scale) : 0),
 		},
 	},
 	) {
