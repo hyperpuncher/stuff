@@ -57,8 +57,17 @@ column_at :: proc(g: Geometry, x: f32) -> (Column, bool) {
 	return .Name, false
 }
 
+list_bottom :: proc(g: Geometry) -> f32 {return g.height - g.footer - g.list_padding}
+
+viewport_config :: proc() -> clay.ElementDeclaration {
+	return {
+		layout = {sizing = {clay.SizingGrow(), clay.SizingGrow()}, layoutDirection = .TopToBottom},
+		clip = {horizontal = true, vertical = true},
+	}
+}
+
 row_at :: proc(g: Geometry, y: f32, first, count: int) -> int {
-	if y < g.list_top || y >= g.list_top + f32(g.rows) * g.row {return -1}
+	if y < g.list_top || y >= list_bottom(g) {return -1}
 	index := first + int((y - g.list_top) / g.row)
 	return index < count ? index : -1
 }
@@ -207,7 +216,6 @@ layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.Ren
 	{
 		layout = {sizing = {clay.SizingGrow(), clay.SizingGrow()}, layoutDirection = .TopToBottom},
 		backgroundColor = theme.panel,
-		clip = {horizontal = true, vertical = true},
 	},
 	) {
 		header_layout(b, g, p)
@@ -229,16 +237,18 @@ layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.Ren
 					cornerRadius = {topLeft = 10 * g.scale, bottomLeft = 10 * g.scale},
 				},
 				) {
-					if len(b.visible) == 0 {
-						if clay.UI()({layout = {padding = clay.PaddingAll(u16(g.padding))}}) {
-							label("this folder is empty", theme.muted, g.scale)
+					if clay.UI(clay.ID("files-viewport"))(viewport_config()) {
+						if len(b.visible) == 0 {
+							if clay.UI()({layout = {padding = clay.PaddingAll(u16(g.padding))}}) {
+								label("this folder is empty", theme.muted, g.scale)
+							}
 						}
+						for i in b.first ..< min(b.first + g.rows + 1, len(b.visible)) {table_row(b, i, g, p)}
 					}
-					for i in b.first ..< min(b.first + g.rows, len(b.visible)) {table_row(b, i, g, p)}
 				}
 			}
 		}
-		if clay.UI()(
+		if clay.UI(clay.ID("footer"))(
 		{
 			layout = {
 				sizing = {clay.SizingGrow(), clay.SizingFixed(g.footer)},

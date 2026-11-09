@@ -263,9 +263,40 @@ large_directory_layout :: proc(t: ^testing.T) {
 			if box.x <
 			   name_right {testing.expect(t, box.x + box.width <= name_right + 0.01)} else if box.x < size_right {testing.expect(t, box.x + box.width <= size_right + 0.01)} else {testing.expect(t, box.x + box.width <= g.width - g.padding + 0.01)}
 		}
-		testing.expect_value(t, clips, 2)
+		testing.expect_value(t, clips, 3)
 		paint(&p, commands, size[0], size[1])
 		testing.expect(t, len(p.slots) <= 3 * g.rows + min(g.rows, len(b.places.entries)) + 6)
 	}
 	verify_disk_usage_layout(t, &p)
+	// Extra rows must not change the viewport or move the footer.
+	viewports := [?]struct {
+		width, height: i32,
+		scale:         f32,
+	} {
+		{960, 640, 1},
+		{1200, 800, 1.25},
+		{1892, 1080, 1.5},
+		{1344, 480, 2},
+		{MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT, 1},
+	}
+	for viewport in viewports {
+		g = geometry(viewport.width, viewport.height, viewport.scale)
+		positions := [?]int{0, 50_000, len(b.visible) - g.rows}
+		for first in positions {
+			b.first = first
+			places_g := places_geometry(g)
+			b.places.first = min(first, max(0, len(b.places.entries) - places_g.rows))
+			_ = layout(&b, g, &p)
+			footer := clay.GetElementData(clay.ID("footer"))
+			list := clay.GetElementData(clay.ID("files-viewport"))
+			places := clay.GetElementData(clay.ID("places-viewport"))
+			testing.expect(t, footer.found && list.found && places.found)
+			testing.expect_value(t, footer.boundingBox.y, g.height - g.footer)
+			testing.expect_value(t, footer.boundingBox.height, g.footer)
+			testing.expect_value(t, list.boundingBox.y, g.list_top)
+			testing.expect_value(t, list.boundingBox.height, list_bottom(g) - g.list_top)
+			testing.expect_value(t, places.boundingBox.y, places_g.list_top)
+			testing.expect_value(t, places.boundingBox.height, list_bottom(g) - places_g.list_top)
+		}
+	}
 }

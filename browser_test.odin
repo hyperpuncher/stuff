@@ -197,10 +197,13 @@ pointer_selection_respects_list_bounds :: proc(t: ^testing.T) {
 	testing.expect_value(t, b.selected, 7 + g.rows - 1)
 	event.button.y += 0.25
 	_ = handle_event(&b, &event, g, &running)
-	testing.expect_value(t, b.selected, 7 + g.rows - 1)
+	testing.expect_value(t, b.selected, 7 + g.rows)
+	event.button.y = list_bottom(g)
+	_ = handle_event(&b, &event, g, &running)
+	testing.expect_value(t, b.selected, 7 + g.rows)
 	event.button.y = g.list_top - 0.25
 	_ = handle_event(&b, &event, g, &running)
-	testing.expect_value(t, b.selected, 7 + g.rows - 1)
+	testing.expect_value(t, b.selected, 7 + g.rows)
 	clear(&b.visible)
 	event.button.y = g.list_top + 1
 	testing.expect(t, !handle_event(&b, &event, g, &running))

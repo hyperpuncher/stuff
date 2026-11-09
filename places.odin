@@ -94,122 +94,124 @@ places_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 	},
 	) {
 		if clay.UI()({layout = list_layout(g)}) {
-			active := places_active(&b.places, b.path)
-			inset := u16(6 * g.scale)
-			for i in b.places.first ..< min(b.places.first + g.rows, len(b.places.entries)) {
-				place := b.places.entries[i]
-				if place.section {
-					if clay.UI()(
-					{layout = {sizing = {clay.SizingGrow(), clay.SizingFixed(g.row)}}},
-					) {}
-					continue
-				}
-				color: clay.Color
-				if i == active {color = theme.selected}
-				color = hover_color(b, clay.ID("place", u32(i)), color)
-				if clay.UI(clay.ID("place", u32(i)))(
-				{
-					layout = {
-						sizing = {clay.SizingGrow(), clay.SizingFixed(g.row)},
-						padding = {
-							left = inset,
-							right = inset,
-							top = u16(2 * g.scale),
-							bottom = u16(2 * g.scale),
-						},
-					},
-				},
-				) {
-					if clay.UI()(
+			if clay.UI(clay.ID("places-viewport"))(viewport_config()) {
+				active := places_active(&b.places, b.path)
+				inset := u16(6 * g.scale)
+				for i in b.places.first ..< min(b.places.first + g.rows + 1, len(b.places.entries)) {
+					place := b.places.entries[i]
+					if place.section {
+						if clay.UI()(
+						{layout = {sizing = {clay.SizingGrow(), clay.SizingFixed(g.row)}}},
+						) {}
+						continue
+					}
+					color: clay.Color
+					if i == active {color = theme.selected}
+					color = hover_color(b, clay.ID("place", u32(i)), color)
+					if clay.UI(clay.ID("place", u32(i)))(
 					{
 						layout = {
-							sizing = {clay.SizingGrow(), clay.SizingGrow()},
+							sizing = {clay.SizingGrow(), clay.SizingFixed(g.row)},
 							padding = {
-								left = u16(8 * g.scale) - inset,
-								right = u16(8 * g.scale) - inset,
+								left = inset,
+								right = inset,
+								top = u16(2 * g.scale),
+								bottom = u16(2 * g.scale),
 							},
-							childGap = u16(8 * g.scale),
-							childAlignment = {y = .Center},
 						},
-						backgroundColor = color,
-						cornerRadius = clay.CornerRadiusAll(6 * g.scale),
 					},
 					) {
-						cursor_color: clay.Color
-						text_color := theme.muted
-						if i == active {text_color = theme.text}
-						if b.places.focused &&
-						   i ==
-							   b.places.selected {cursor_color, text_color = theme.text, theme.text}
 						if clay.UI()(
 						{
 							layout = {
-								sizing = {
-									clay.SizingFixed(2 * g.scale),
-									clay.SizingFixed(16 * g.scale),
+								sizing = {clay.SizingGrow(), clay.SizingGrow()},
+								padding = {
+									left = u16(8 * g.scale) - inset,
+									right = u16(8 * g.scale) - inset,
 								},
+								childGap = u16(8 * g.scale),
+								childAlignment = {y = .Center},
 							},
-							backgroundColor = cursor_color,
-						},
-						) {}
-						icon_element(p, place.icon, g.scale)
-						width := g.sidebar - 52 * g.scale
-						if place_can_unmount(place) {width -= 26 * g.scale}
-						if clay.UI()(
-						{
-							layout = {
-								sizing = {width = clay.SizingGrow()},
-								layoutDirection = .TopToBottom,
-								childGap = u16(3 * g.scale),
-							},
+							backgroundColor = color,
+							cornerRadius = clay.CornerRadiusAll(6 * g.scale),
 						},
 						) {
-							label(fit_label(p.font, place.label, width), text_color, g.scale)
-							if place.disk && place.space.valid && place.space.total > 0 {
-								if clay.UI()(
-								{
-									layout = {
-										sizing = {
-											clay.SizingFixed(max(0, width - 8 * g.scale)),
-											clay.SizingFixed(2 * g.scale),
-										},
+							cursor_color: clay.Color
+							text_color := theme.muted
+							if i == active {text_color = theme.text}
+							if b.places.focused &&
+							   i ==
+								   b.places.selected {cursor_color, text_color = theme.text, theme.text}
+							if clay.UI()(
+							{
+								layout = {
+									sizing = {
+										clay.SizingFixed(2 * g.scale),
+										clay.SizingFixed(16 * g.scale),
 									},
-									backgroundColor = theme.inactive_selection,
-									cornerRadius = clay.CornerRadiusAll(g.scale),
 								},
-								) {
+								backgroundColor = cursor_color,
+							},
+							) {}
+							icon_element(p, place.icon, g.scale)
+							width := g.sidebar - 52 * g.scale
+							if place_can_unmount(place) {width -= 26 * g.scale}
+							if clay.UI()(
+							{
+								layout = {
+									sizing = {width = clay.SizingGrow()},
+									layoutDirection = .TopToBottom,
+									childGap = u16(3 * g.scale),
+								},
+							},
+							) {
+								label(fit_label(p.font, place.label, width), text_color, g.scale)
+								if place.disk && place.space.valid && place.space.total > 0 {
 									if clay.UI()(
 									{
 										layout = {
 											sizing = {
-												clay.SizingPercent(
-													disk_used_fraction(place.space),
-												),
-												clay.SizingGrow(),
+												clay.SizingFixed(max(0, width - 8 * g.scale)),
+												clay.SizingFixed(2 * g.scale),
 											},
 										},
-										backgroundColor = theme.muted,
+										backgroundColor = theme.inactive_selection,
 										cornerRadius = clay.CornerRadiusAll(g.scale),
 									},
-									) {}
+									) {
+										if clay.UI()(
+										{
+											layout = {
+												sizing = {
+													clay.SizingPercent(
+														disk_used_fraction(place.space),
+													),
+													clay.SizingGrow(),
+												},
+											},
+											backgroundColor = theme.muted,
+											cornerRadius = clay.CornerRadiusAll(g.scale),
+										},
+										) {}
+									}
 								}
 							}
-						}
-						if place_can_unmount(place) {
-							id := place_unmount_id(i)
-							if clay.UI(id)(
-							{
-								layout = {
-									sizing = {
-										clay.SizingFixed(18 * g.scale),
-										clay.SizingFixed(18 * g.scale),
+							if place_can_unmount(place) {
+								id := place_unmount_id(i)
+								if clay.UI(id)(
+								{
+									layout = {
+										sizing = {
+											clay.SizingFixed(18 * g.scale),
+											clay.SizingFixed(18 * g.scale),
+										},
+										childAlignment = {x = .Center, y = .Center},
 									},
-									childAlignment = {x = .Center, y = .Center},
+									backgroundColor = hover_color(b, id, {}),
+									cornerRadius = clay.CornerRadiusAll(9 * g.scale),
 								},
-								backgroundColor = hover_color(b, id, {}),
-								cornerRadius = clay.CornerRadiusAll(9 * g.scale),
-							},
-							) {icon_element(p, .Unmount, g.scale)}
+								) {icon_element(p, .Unmount, g.scale)}
+							}
 						}
 					}
 				}
