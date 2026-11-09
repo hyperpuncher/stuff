@@ -26,6 +26,7 @@ copy_keeps_existing_files_and_symbolic_links :: proc(t: ^testing.T) {
 	op := File_Operation {
 		target = target,
 	}
+	defer {file_changes_destroy(op.changes)}
 	buffer := make([]u8, 1024)
 	defer delete(buffer)
 	testing.expect(t, file_copy(&op, source, buffer) == nil)

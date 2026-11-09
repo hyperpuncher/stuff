@@ -70,7 +70,7 @@ trash_local_open :: proc(top: string) -> (linux.Fd, os.Error) {
 
 // Freedesktop trash format: a same-filesystem rename and a .trashinfo record.
 // If trash is unavailable, leave the source in place. There is no permanent-delete fallback.
-trash_file :: proc(source, home: string, mounts: []Mount) -> os.Error {
+trash_file :: proc(source, home: string, mounts: []Mount, record: ^File_Change = nil) -> os.Error {
 	parent, name := os.split_path(source)
 	if name == "" || name == "." || name == ".." {return .Invalid_Path}
 	absolute := os.get_absolute_path(parent, context.allocator) or_return
@@ -113,6 +113,19 @@ trash_file :: proc(source, home: string, mounts: []Mount) -> os.Error {
 	defer linux.close(files)
 	infos := trash_private_at(root, "info") or_return
 	defer linux.close(infos)
+	files_path, infos_path: string
+	defer delete(files_path)
+	defer delete(infos_path)
+	if record != nil {
+		files_path = os.read_link(
+			fmt.tprintf("/proc/self/fd/%d", files),
+			context.allocator,
+		) or_return
+		infos_path = os.read_link(
+			fmt.tprintf("/proc/self/fd/%d", infos),
+			context.allocator,
+		) or_return
+	}
 	restore := path
 	if local {restore = strings.trim_prefix(strings.trim_prefix(path, top), "/")}
 	out := strings.builder_make()
@@ -159,7 +172,18 @@ trash_file :: proc(source, home: string, mounts: []Mount) -> os.Error {
 		if err == nil {err = close_err}
 		if err ==
 		   nil {err = linux.renameat2(linux.AT_FDCWD, source_c, files, base_c, {.NOREPLACE})}
-		if err == nil {return nil}
+		if err == nil {
+			if record != nil {
+				record^ = {
+					path       = strings.clone(path),
+					alternate  = fmt.aprintf("%s/%s", files_path, base),
+					trash_info = fmt.aprintf("%s/%s", infos_path, string(info_c)),
+					device     = info.device,
+					inode      = info.inode,
+				}
+			}
+			return nil
+		}
 		linux.unlinkat(infos, info_c, {})
 		if err != linux.Errno.EEXIST {return err}
 	}

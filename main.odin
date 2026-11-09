@@ -87,6 +87,11 @@ handle_input :: proc(
 	case .KEY_DOWN:
 		ctrl := event.key.mod & sdl.KMOD_CTRL != {}
 		shift := event.key.mod & sdl.KMOD_SHIFT != {}
+		if ctrl && event.key.key == sdl.K_Z {
+			if event.key.repeat {return false, nil}
+			file_history_start(b, shift)
+			return true, nil
+		}
 		if !b.places.focused {
 			key := event.key.key
 			copy := ctrl && (key == sdl.K_C || key == sdl.K_INSERT && !shift)

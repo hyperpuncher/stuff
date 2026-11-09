@@ -10,10 +10,10 @@ import linux "core:sys/linux"
 import "core:thread"
 
 File_Operation :: struct {
-	kind:               enum {
-		Copy,
-		Trash,
-	},
+	kind:               File_Action,
+	history:            File_History_Mode,
+	count:              int, // Immutable after launch, including while history lists move.
+	changes, applied:   [dynamic]File_Change,
 	sources:            [dynamic]string,
 	target, trash_home: string,
 	storage:            ^Storage,
@@ -35,6 +35,8 @@ file_operation_destroy :: proc(op: ^File_Operation) {
 	if op == nil {return}
 	file_operation_stop(op)
 	file_paths_destroy(op.sources)
+	file_changes_destroy(op.changes)
+	file_changes_destroy(op.applied)
 	delete(op.target)
 	delete(op.trash_home)
 	delete(op.error)
@@ -51,18 +53,28 @@ file_operation_start :: proc(b: ^Browser, trash: bool) {
 	op.sources = paths
 	op.target = strings.clone(b.path)
 	if trash {op.trash_home = trash_home_path()}
+	if !file_operation_launch(b, op) {file_operation_destroy(op)}
+}
+
+file_operation_launch :: proc(b: ^Browser, op: ^File_Operation) -> bool {
 	op.storage, op.allocator = b.storage, context.allocator
+	op.count = len(op.sources) + len(op.changes)
 	op.worker = thread.create_and_start_with_data(op, file_operation_worker, name = "stuff-files")
-	if op.worker == nil {
-		file_operation_destroy(op)
-		browser_message(b, "cannot start file operation")
-		return
-	}
+	if op.worker == nil {browser_message(b, "cannot start file operation"); return false}
 	b.pending_files = op
 	browser_message(b, "")
+	return true
+}
+
+file_operation_failed :: proc(op: ^File_Operation, path: string, err: os.Error) {
+	op.failed += 1
+	if op.error != "" {return}
+	_, name := os.split_path(path)
+	op.error = fmt.aprintf("%s: %s", name, os.error_string(err))
 }
 
 file_operation_run :: proc(op: ^File_Operation) {
+	if op.history != .Record {file_history_run(op); return}
 	buffer: []u8
 	if op.kind == .Copy {buffer = make([]u8, 1024 * 1024)}
 	defer delete(buffer)
@@ -72,15 +84,12 @@ file_operation_run :: proc(op: ^File_Operation) {
 	for source in op.sources {
 		if sync.atomic_load(&op.cancel) {break}
 		err: os.Error
-		if op.kind ==
-		   .Copy {err = file_copy(op, source, buffer)} else {err = trash_file(source, op.trash_home, mounts[:])}
-		if err != nil {
-			op.failed += 1
-			if op.error == "" {
-				_, name := os.split_path(source)
-				op.error = fmt.aprintf("%s: %s", name, os.error_string(err))
-			}
+		if op.kind == .Copy {err = file_copy(op, source, buffer)} else {
+			change: File_Change
+			err = trash_file(source, op.trash_home, mounts[:], &change)
+			if err == nil {append(&op.changes, change)}
 		}
+		if err != nil {file_operation_failed(op, source, err)}
 		free_all(context.temp_allocator)
 	}
 }
@@ -95,6 +104,7 @@ file_operation_worker :: proc(data: rawptr) {
 file_operation_apply :: proc(b: ^Browser, op: ^File_Operation) -> bool {
 	if b.pending_files != op {return false}
 	b.pending_files = nil
+	file_history_apply(b, op)
 	// Refresh only the affected folder. Completion must not change navigation.
 	if b.path == op.target {
 		location := browser_location(b)
@@ -106,13 +116,14 @@ file_operation_apply :: proc(b: ^Browser, op: ^File_Operation) -> bool {
 	}
 	if op.failed > 0 {
 		verb := op.kind == .Copy ? "copy" : "move to trash"
+		if op.history != .Record {verb = op.history == .Undo ? "undo" : "redo"}
 		browser_message(
 			b,
 			fmt.tprintf(
 				"cannot %s %d of %d items: %s",
 				verb,
 				op.failed,
-				len(op.sources),
+				op.history == .Record ? len(op.sources) : op.count,
 				op.error,
 			),
 		)
@@ -158,6 +169,11 @@ file_copy :: proc(op: ^File_Operation, source: string, buffer: []u8) -> os.Error
 		if i > 1 {base = fmt.tprintf("%s (copy %d)%s", stem, i, ext)}
 		target := fmt.aprintf("%s/%s", op.target, base)
 		err := file_rename_new(payload, target)
+		if err == nil {
+			change, stat_err := file_change_capture(target)
+			if stat_err == nil {append(&op.changes, change)}
+			err = stat_err
+		}
 		delete(target)
 		if err == linux.Errno.EEXIST {continue}
 		return err

@@ -19,30 +19,31 @@ History_Entry :: struct {
 
 // Entries, path, and history strings are owned. visible contains indices into entries.
 Browser :: struct {
-	path:            string,
-	entries:         []os.File_Info,
-	visible:         [dynamic]int,
-	selected, first: int,
-	anchor:          int,
-	marks:           map[int]bool,
-	marked_bytes:    i64,
-	show_hidden:     bool,
-	visible_bytes:   i64,
-	sort_column:     Column,
-	descending:      bool,
-	back, forward:   [dynamic]History_Entry,
-	opens:           [dynamic]File_Open,
-	status_error:    string,
-	places:          Places,
-	header:          Header,
-	pointer:         Pointer,
-	hovered:         u32,
-	storage:         ^Storage,
-	space:           Space_Info,
-	pending_disk:    ^Disk_Operation, // Borrowed until the worker returns its result.
-	drag:            Scroll_Drag,
-	menu:            Context_Menu,
-	pending_files:   ^File_Operation, // Borrowed until its result is applied.
+	path:                   string,
+	entries:                []os.File_Info,
+	visible:                [dynamic]int,
+	selected, first:        int,
+	anchor:                 int,
+	marks:                  map[int]bool,
+	marked_bytes:           i64,
+	show_hidden:            bool,
+	visible_bytes:          i64,
+	sort_column:            Column,
+	descending:             bool,
+	back, forward:          [dynamic]History_Entry,
+	opens:                  [dynamic]File_Open,
+	status_error:           string,
+	places:                 Places,
+	header:                 Header,
+	pointer:                Pointer,
+	hovered:                u32,
+	storage:                ^Storage,
+	space:                  Space_Info,
+	pending_disk:           ^Disk_Operation, // Borrowed until the worker returns its result.
+	drag:                   Scroll_Drag,
+	menu:                   Context_Menu,
+	pending_files:          ^File_Operation, // Borrowed until its result is applied.
+	undo_files, redo_files: [dynamic]File_Batch,
 }
 
 browser_message :: proc(b: ^Browser, message: string) {
@@ -55,6 +56,8 @@ browser_destroy :: proc(b: ^Browser) {
 	storage_destroy(b.storage)
 	b.storage, b.pending_disk = nil, nil
 	header_destroy(&b.header)
+	file_history_clear(&b.undo_files)
+	file_history_clear(&b.redo_files)
 	delete(b.status_error)
 	places_destroy(&b.places)
 	file_open_destroy(b)

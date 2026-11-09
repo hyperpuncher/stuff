@@ -275,8 +275,10 @@ layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.Ren
 				summary = fmt.tprintf("%s %s…", verb, b.pending_disk.device)
 			}
 			if b.pending_files != nil {
-				verb := b.pending_files.kind == .Copy ? "copying" : "moving to trash:"
-				summary = fmt.tprintf("%s %d items…", verb, len(b.pending_files.sources))
+				op := b.pending_files
+				verb := op.kind == .Copy ? "copying" : "moving to trash:"
+				if op.history != .Record {verb = op.history == .Undo ? "undoing" : "redoing"}
+				summary = fmt.tprintf("%s %d items…", verb, op.count)
 			}
 			if b.status_error != "" {summary, color = b.status_error, theme.text}
 			free_space := ""
