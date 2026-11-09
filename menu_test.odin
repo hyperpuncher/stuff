@@ -56,7 +56,7 @@ verify_context_menu_rendering :: proc(t: ^testing.T, p: ^Painter) {
 		}
 		for action in Menu_Action {
 			row := clay.GetElementData(clay.ID("menu-item", u32(action)))
-			if action == .Paste && !b.menu.paste {testing.expect(t, !row.found); continue}
+			if !menu_visible(&b, action) {testing.expect(t, !row.found); continue}
 			testing.expect(t, row.found)
 			x, y :=
 				row.boundingBox.x +

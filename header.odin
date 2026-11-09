@@ -95,7 +95,7 @@ header_click :: proc(b: ^Browser, x, y: f32) -> (handled: bool, err: os.Error) {
 header_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 	h := &b.header
 	h.edit.font = p.font
-	if h.edit.active {path_edit_layout(b, g, p); return}
+	if h.edit.active && h.edit.mode == .Path {path_edit_layout(b, g, p); return}
 	header_sync(h, b.path)
 	available := g.width - 2 * f32(u16(12 * g.scale)) - f32(u16(8 * g.scale)) - 28 * g.scale
 	labels := make([]string, len(h.crumbs), context.temp_allocator)

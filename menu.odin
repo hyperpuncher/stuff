@@ -7,6 +7,8 @@ import sdl "vendor:sdl3"
 Menu_Action :: enum {
 	Copy,
 	Paste,
+	Rename,
+	New_Folder,
 	Trash,
 	Select_All,
 }
@@ -16,8 +18,17 @@ Context_Menu :: struct {
 	selected:      int,
 }
 
-menu_box :: proc(menu: Context_Menu, g: Geometry) -> clay.BoundingBox {
-	rows := menu.paste ? 4 : 3
+menu_visible :: proc(b: ^Browser, action: Menu_Action) -> bool {
+	if action == .Paste {return b.menu.paste}
+	if action == .Rename {return len(b.marks) == 1 && b.path != TRASH_PATH}
+	if action == .New_Folder {return len(b.marks) == 0 && b.path != TRASH_PATH}
+	return true
+}
+
+menu_box :: proc(b: ^Browser, g: Geometry) -> clay.BoundingBox {
+	menu := b.menu
+	rows := 0
+	for action in Menu_Action {if menu_visible(b, action) {rows += 1}}
 	width, height := menu.width, f32(rows) * g.row + 8 * g.scale
 	margin := 24 * g.scale
 	return {
@@ -29,7 +40,10 @@ menu_box :: proc(menu: Context_Menu, g: Geometry) -> clay.BoundingBox {
 }
 
 menu_enabled :: proc(b: ^Browser, action: Menu_Action) -> bool {
+	if !menu_visible(b, action) {return false}
 	switch action {
+	case .Rename, .New_Folder:
+		return b.pending_files == nil
 	case .Copy:
 		return len(b.marks) > 0
 	case .Paste:
@@ -43,14 +57,14 @@ menu_enabled :: proc(b: ^Browser, action: Menu_Action) -> bool {
 }
 
 menu_action_at :: proc(b: ^Browser, g: Geometry, x, y: f32) -> int {
-	box := menu_box(b.menu, g)
+	box := menu_box(b, g)
 	if x < box.x ||
 	   x >= box.x + box.width ||
 	   y < box.y + 4 * g.scale ||
 	   y >= box.y + box.height - 4 * g.scale {return -1}
 	row := int((y - box.y - 4 * g.scale) / g.row)
 	for action in Menu_Action {
-		if action == .Paste && !b.menu.paste {continue}
+		if !menu_visible(b, action) {continue}
 		if row == 0 {return int(action)}
 		row -= 1
 	}
@@ -83,6 +97,8 @@ menu_execute :: proc(b: ^Browser, action: Menu_Action) {
 		file_clipboard_copy(b)
 	case .Paste:
 		file_operation_start(b, false)
+	case .Rename, .New_Folder:
+		file_dialog_start(b, action == .Rename)
 	case .Trash:
 		file_operation_start(b, true)
 	case .Select_All:
@@ -110,11 +126,12 @@ menu_input :: proc(b: ^Browser, event: ^sdl.Event, g: Geometry) -> bool {
 			b.menu.active = false
 		case sdl.K_UP, sdl.K_DOWN, sdl.K_HOME, sdl.K_END:
 			i := b.menu.selected
+			count := len([Menu_Action]bool{})
 			direction := event.key.key == sdl.K_UP || event.key.key == sdl.K_END ? -1 : 1
 			if event.key.key == sdl.K_HOME {i = -1}
-			if event.key.key == sdl.K_END || i < 0 && direction < 0 {i = 4}
-			for _ in 0 ..< 4 {
-				i = (i + direction + 4) % 4
+			if event.key.key == sdl.K_END || i < 0 && direction < 0 {i = count}
+			for _ in 0 ..< count {
+				i = (i + direction + count) % count
 				if menu_enabled(b, Menu_Action(i)) {b.menu.selected = i; break}
 			}
 		case sdl.K_RETURN:
@@ -169,6 +186,8 @@ menu_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 	names := [Menu_Action]string {
 		.Copy       = "copy",
 		.Paste      = "paste",
+		.Rename     = "rename",
+		.New_Folder = "new folder",
 		.Trash      = "move to trash",
 		.Select_All = "select all",
 	}
@@ -177,11 +196,13 @@ menu_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 	icons := [Menu_Action]Icon {
 		.Copy       = .CopyPath,
 		.Paste      = .Paste,
+		.Rename     = .Rename,
+		.New_Folder = .NewFolder,
 		.Trash      = .Trash,
 		.Select_All = .SelectAll,
 	}
 	if !b.menu.active {return}
-	box := menu_box(b.menu, g)
+	box := menu_box(b, g)
 	padding := 21 * g.scale
 	shadow := menu_shadow_texture(p, box, g.scale)
 	if clay.UI()(
@@ -214,7 +235,7 @@ menu_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 	},
 	) {
 		for name, action in names {
-			if action == .Paste && !b.menu.paste {continue}
+			if !menu_visible(b, action) {continue}
 			id := clay.ID("menu-item", u32(action))
 			enabled := menu_enabled(b, action)
 			background: clay.Color

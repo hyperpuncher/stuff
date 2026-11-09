@@ -11,6 +11,9 @@ import ttf "vendor:sdl3/ttf"
 
 Path_Edit :: struct {
 	active, dragging:   bool,
+	mode:               Edit_Mode,
+	source:             string,
+	waiting:            ^File_Operation,
 	value, composition: string, // Owned. Cursor and anchor are grapheme byte boundaries.
 	cursor, anchor:     int,
 	offset:             f32,
@@ -20,6 +23,7 @@ Path_Edit :: struct {
 
 path_edit_end :: proc(edit: ^Path_Edit) {
 	delete(edit.value)
+	delete(edit.source)
 	delete(edit.composition)
 	edit_history_clear(&edit.undo)
 	edit_history_clear(&edit.redo)
@@ -31,6 +35,7 @@ path_edit_end :: proc(edit: ^Path_Edit) {
 
 path_edit_start :: proc(b: ^Browser) {
 	edit := &b.header.edit
+	if edit.mode != .Path {path_edit_end(edit)}
 	if !edit.active {edit.value = strings.clone(b.path)}
 	edit.active = true
 	edit.anchor, edit.cursor = 0, len(edit.value)
@@ -39,7 +44,16 @@ path_edit_start :: proc(b: ^Browser) {
 	browser_message(b, "")
 }
 
-path_edit_box :: proc(g: Geometry) -> clay.BoundingBox {
+path_edit_box :: proc(g: Geometry, mode: Edit_Mode = .Path) -> clay.BoundingBox {
+	if mode != .Path {
+		box := file_dialog_box(g)
+		return {
+			box.x + 12 * g.scale,
+			box.y + 12 * g.scale + g.row,
+			box.width - 24 * g.scale,
+			g.header - 8 * g.scale,
+		}
+	}
 	return {4 * g.scale, 4 * g.scale, g.width - 8 * g.scale, g.header - 8 * g.scale}
 }
 
@@ -110,7 +124,7 @@ path_edit_copy :: proc(b: ^Browser) -> bool {
 
 path_edit_click :: proc(edit: ^Path_Edit, g: Geometry, x: f32, extend: bool) {
 	if edit.font == nil {return}
-	target := x - path_edit_box(g).x - 8 * g.scale + edit.offset
+	target := x - path_edit_box(g, edit.mode).x - 8 * g.scale + edit.offset
 	cursor, previous_width := 0, f32(0)
 	it := utf8.decode_grapheme_iterator_make(edit.value)
 	for _, cluster in utf8.decode_grapheme_iterate(&it) {
@@ -132,11 +146,33 @@ path_edit_input :: proc(
 	err: os.Error,
 ) {
 	edit := &b.header.edit
-	if event.type == .KEY_DOWN && event.key.key == sdl.K_L && event.key.mod & sdl.KMOD_CTRL != {} {
+	if event.type == .KEY_DOWN &&
+	   event.key.key == sdl.K_R &&
+	   event.key.mod & sdl.KMOD_CTRL != {} &&
+	   !edit.active &&
+	   !b.places.focused {
+		if !event.key.repeat {file_dialog_start(b, true)}
+		return true, nil
+	}
+	if event.type == .KEY_DOWN &&
+	   event.key.key == sdl.K_L &&
+	   event.key.mod & sdl.KMOD_CTRL != {} &&
+	   (!edit.active || edit.mode == .Path) {
 		if !event.key.repeat {path_edit_start(b)}
 		return true, nil
 	}
 	if !edit.active {return}
+	if edit.waiting != nil {
+		#partial switch event.type {
+		case .KEY_DOWN,
+		     .TEXT_INPUT,
+		     .TEXT_EDITING,
+		     .MOUSE_BUTTON_DOWN,
+		     .MOUSE_BUTTON_UP,
+		     .MOUSE_WHEEL:
+			return true, nil
+		}
+	}
 	#partial switch event.type {
 	case .TEXT_INPUT:
 		path_edit_replace(b, string(event.text.text))
@@ -147,8 +183,22 @@ path_edit_input :: proc(
 		return true, nil
 	case .MOUSE_BUTTON_UP:
 		edit.dragging = false
+	case .MOUSE_WHEEL:
+		if edit.mode != .Path {return true, nil}
 	case .MOUSE_BUTTON_DOWN:
-		box := path_edit_box(g)
+		if edit.mode != .Path {
+			if header_hit(
+				clay.ID("file-dialog-cancel"),
+				event.button.x,
+				event.button.y,
+			) {path_edit_end(edit); return true, nil}
+			if header_hit(
+				clay.ID("file-dialog-submit"),
+				event.button.x,
+				event.button.y,
+			) {file_dialog_submit(b); return true, nil}
+		}
+		box := path_edit_box(g, edit.mode)
 		if event.button.x >= box.x &&
 		   event.button.x < box.x + box.width &&
 		   event.button.y >= box.y &&
@@ -157,6 +207,14 @@ path_edit_input :: proc(
 				path_edit_click(edit, g, event.button.x, sdl.GetModState() & sdl.KMOD_SHIFT != {})
 				edit.dragging = true
 			}
+			return true, nil
+		}
+		if edit.mode != .Path {
+			if !header_hit(
+				clay.ID("file-dialog"),
+				event.button.x,
+				event.button.y,
+			) {path_edit_end(edit)}
 			return true, nil
 		}
 		path_edit_end(edit)
@@ -181,6 +239,7 @@ path_edit_input :: proc(
 			path_edit_end(edit)
 		case sdl.K_RETURN, sdl.K_KP_ENTER:
 			if event.key.repeat || edit.composition != "" {return true, nil}
+			if edit.mode != .Path {file_dialog_submit(b); return true, nil}
 			if edit.value == "" {browser_message(b, "enter a folder path"); return true, nil}
 			target := edit.value
 			if target == "~" || strings.has_prefix(target, "~/") {
@@ -219,7 +278,7 @@ path_edit_caret :: proc(edit: ^Path_Edit) -> f32 {
 }
 
 path_edit_ime_area :: proc(edit: ^Path_Edit, g: Geometry, window: ^sdl.Window) {
-	box := path_edit_box(g)
+	box := path_edit_box(g, edit.mode)
 	density := sdl.GetWindowPixelDensity(window)
 	area := sdl.Rect {
 		i32(box.x / density),
@@ -233,7 +292,7 @@ path_edit_ime_area :: proc(edit: ^Path_Edit, g: Geometry, window: ^sdl.Window) {
 
 path_edit_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 	edit := &b.header.edit
-	box := path_edit_box(g)
+	box := path_edit_box(g, edit.mode)
 	low, high := min(edit.cursor, edit.anchor), max(edit.cursor, edit.anchor)
 	cursor := path_edit_caret(edit)
 	width := box.width - 16 * g.scale
@@ -299,7 +358,7 @@ path_edit_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 					floating = {
 						attachTo = .Parent,
 						clipTo = .AttachedParent,
-						zIndex = 1,
+						zIndex = edit.mode == .Path ? 1 : 6,
 						attachment = {element = .LeftCenter, parent = .LeftCenter},
 						pointerCaptureMode = .Passthrough,
 					},
@@ -317,7 +376,7 @@ path_edit_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 						floating = {
 							attachTo = .Parent,
 							clipTo = .AttachedParent,
-							zIndex = 2,
+							zIndex = edit.mode == .Path ? 2 : 7,
 							offset = {cursor, 0},
 							attachment = {element = .LeftCenter, parent = .LeftCenter},
 							pointerCaptureMode = .Passthrough,

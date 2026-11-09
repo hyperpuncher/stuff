@@ -8,6 +8,8 @@ import "core:sync"
 File_Action :: enum {
 	Copy,
 	Trash,
+	Rename,
+	New_Folder,
 }
 File_History_Mode :: enum {
 	Record,
@@ -68,7 +70,9 @@ file_change_check :: proc(change: File_Change, path: string) -> os.Error {
 }
 
 file_history_run :: proc(op: ^File_Operation) {
-	to_trash := op.kind == .Copy && op.history == .Undo || op.kind == .Trash && op.history == .Redo
+	to_trash :=
+		(op.kind == .Copy || op.kind == .New_Folder) && op.history == .Undo ||
+		op.kind == .Trash && op.history == .Redo
 	mounts: [dynamic]Mount
 	if to_trash {
 		mount_error: os.Error
@@ -83,7 +87,8 @@ file_history_run :: proc(op: ^File_Operation) {
 	#reverse for current in changes {
 		change := current
 		if sync.atomic_load(&op.cancel) {append(&op.changes, change); continue}
-		from := to_trash ? change.path : change.alternate
+		from :=
+			to_trash || op.kind == .Rename && op.history == .Redo ? change.path : change.alternate
 		err := file_change_check(change, from)
 		if err == nil {
 			if to_trash {
@@ -91,8 +96,10 @@ file_history_run :: proc(op: ^File_Operation) {
 				err = trash_file(from, op.trash_home, mounts[:], &next)
 				if err == nil {file_change_destroy(change); change = next}
 			} else {
-				err = file_rename_new(from, change.path)
-				if err == nil {
+				target :=
+					op.kind == .Rename && op.history == .Redo ? change.alternate : change.path
+				err = file_rename_new(from, target)
+				if err == nil && op.kind != .Rename {
 					// The data is restored before its trash record is removed.
 					if cleanup := os.remove(change.trash_info);
 					   cleanup != nil && cleanup != .Not_Exist {

@@ -86,7 +86,7 @@ context_menu_preserves_groups_and_captures_input :: proc(t: ^testing.T) {
 	b.menu.width = 160
 	for paste in ([?]bool{false, true}) {
 		b.menu.paste = paste
-		box := menu_box(b.menu, g)
+		box := menu_box(&b, g)
 		testing.expect_value(t, box.height, (paste ? 4 : 3) * g.row + 8 * g.scale)
 		x, y := box.x + box.width / 2, box.y + 4 * g.scale + 1.5 * g.row
 		expected: Menu_Action = paste ? .Paste : .Trash
@@ -117,7 +117,7 @@ context_menu_preserves_groups_and_captures_input :: proc(t: ^testing.T) {
 	testing.expect(t, b.menu.active)
 	testing.expect_value(t, len(b.marks), 0)
 	testing.expect(t, !menu_enabled(&b, .Copy) && !menu_enabled(&b, .Trash))
-	box := menu_box(b.menu, g)
+	box := menu_box(&b, g)
 	testing.expect(t, box.x + box.width <= g.width && box.y + box.height <= g.height)
 	event = {
 		key = {type = .KEY_DOWN, key = sdl.K_END},

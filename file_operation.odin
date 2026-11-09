@@ -10,18 +10,18 @@ import linux "core:sys/linux"
 import "core:thread"
 
 File_Operation :: struct {
-	kind:               File_Action,
-	history:            File_History_Mode,
-	count:              int, // Immutable after launch, including while history lists move.
-	changes, applied:   [dynamic]File_Change,
-	sources:            [dynamic]string,
-	target, trash_home: string,
-	storage:            ^Storage,
-	allocator:          mem.Allocator,
-	worker:             ^thread.Thread,
-	cancel:             bool, // Atomic. All other mutable fields belong to the worker until publication.
-	failed:             int,
-	error:              string,
+	kind:                            File_Action,
+	history:                         File_History_Mode,
+	count:                           int, // Immutable after launch, including while history lists move.
+	changes, applied:                [dynamic]File_Change,
+	sources:                         [dynamic]string,
+	target, trash_home, destination: string,
+	storage:                         ^Storage,
+	allocator:                       mem.Allocator,
+	worker:                          ^thread.Thread,
+	cancel:                          bool, // Atomic. All other mutable fields belong to the worker until publication.
+	failed:                          int,
+	error:                           string,
 }
 
 file_operation_stop :: proc(op: ^File_Operation) {
@@ -38,6 +38,7 @@ file_operation_destroy :: proc(op: ^File_Operation) {
 	file_changes_destroy(op.changes)
 	file_changes_destroy(op.applied)
 	delete(op.target)
+	delete(op.destination)
 	delete(op.trash_home)
 	delete(op.error)
 	free(op)
@@ -84,7 +85,20 @@ file_operation_run :: proc(op: ^File_Operation) {
 	for source in op.sources {
 		if sync.atomic_load(&op.cancel) {break}
 		err: os.Error
-		if op.kind == .Copy {err = file_copy(op, source, buffer)} else {
+		if op.kind ==
+		   .Copy {err = file_copy(op, source, buffer)} else if op.kind == .Rename || op.kind == .New_Folder {
+			if op.kind ==
+			   .Rename {err = file_rename_new(source, op.destination)} else {err = os.make_directory(op.destination)}
+			if err == nil {
+				change: File_Change
+				change, err = file_change_capture(op.destination)
+				if err == nil {
+					if op.kind ==
+					   .Rename {delete(change.path); change.path = strings.clone(source); change.alternate = strings.clone(op.destination)}
+					append(&op.changes, change)
+				}
+			}
+		} else {
 			change: File_Change
 			err = trash_file(source, op.trash_home, mounts[:], &change)
 			if err == nil {append(&op.changes, change)}
@@ -104,10 +118,26 @@ file_operation_worker :: proc(data: rawptr) {
 file_operation_apply :: proc(b: ^Browser, op: ^File_Operation) -> bool {
 	if b.pending_files != op {return false}
 	b.pending_files = nil
+	renamed_target := ""
+	if op.kind == .Rename && len(b.visible) > 0 {
+		changes := op.history == .Record ? op.changes : op.applied
+		for change in changes {
+			from, to := change.path, change.alternate
+			if op.history == .Undo {from, to = to, from}
+			if b.entries[b.visible[b.selected]].fullpath == from {renamed_target = to; break}
+		}
+	}
 	file_history_apply(b, op)
 	// Refresh only the affected folder. Completion must not change navigation.
 	if b.path == op.target {
 		location := browser_location(b)
+		selected_target := renamed_target
+		if op.failed == 0 && b.header.edit.waiting == op {selected_target = op.destination}
+		if selected_target != "" {
+			delete(location.selected_name)
+			_, name := os.split_path(selected_target)
+			location.selected_name = strings.clone(name)
+		}
 		defer history_entry_destroy(location)
 		cursor := b.selected
 		if err := browser_load(b, b.path); err != nil {
@@ -115,7 +145,8 @@ file_operation_apply :: proc(b: ^Browser, op: ^File_Operation) -> bool {
 		} else {browser_restore_location(b, location, cursor)}
 	}
 	if op.failed > 0 {
-		verb := op.kind == .Copy ? "copy" : "move to trash"
+		verb :=
+			op.kind == .Copy ? "copy" : op.kind == .Rename ? "rename" : op.kind == .New_Folder ? "create folder" : "move to trash"
 		if op.history != .Record {verb = op.history == .Undo ? "undo" : "redo"}
 		browser_message(
 			b,
@@ -127,6 +158,10 @@ file_operation_apply :: proc(b: ^Browser, op: ^File_Operation) -> bool {
 				op.error,
 			),
 		)
+	}
+	if b.header.edit.waiting == op {
+		b.header.edit.waiting = nil
+		if op.failed == 0 {path_edit_end(&b.header.edit)}
 	}
 	storage_refresh(b.storage)
 	return true

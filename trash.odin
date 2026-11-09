@@ -7,6 +7,8 @@ import linux "core:sys/linux"
 import "core:time"
 import sdl "vendor:sdl3"
 
+TRASH_PATH :: "trash:///"
+
 trash_home_path :: proc() -> string {
 	data := os.get_env("XDG_DATA_HOME", context.temp_allocator)
 	if strings.has_prefix(data, "/") {return fmt.aprintf("%s/Trash", data)}

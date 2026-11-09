@@ -276,7 +276,8 @@ layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.Ren
 			}
 			if b.pending_files != nil {
 				op := b.pending_files
-				verb := op.kind == .Copy ? "copying" : "moving to trash:"
+				verb :=
+					op.kind == .Copy ? "copying" : op.kind == .Rename ? "renaming" : op.kind == .New_Folder ? "creating" : "moving to trash:"
 				if op.history != .Record {verb = op.history == .Undo ? "undoing" : "redoing"}
 				summary = fmt.tprintf("%s %d items…", verb, op.count)
 			}
@@ -294,5 +295,6 @@ layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.Ren
 		}
 	}
 	menu_layout(b, g, p)
+	file_dialog_layout(b, g, p)
 	return clay.EndLayout(0)
 }
