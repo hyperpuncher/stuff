@@ -29,7 +29,23 @@ verify_theme_switch :: proc(t: ^testing.T, p: ^Painter) {
 	}{{.LIGHT, LIGHT_THEME, true}, {.DARK, DARK_THEME, true}, {.UNKNOWN, DARK_THEME, false}}
 	for item in cases {
 		testing.expect_value(t, theme_apply(p, item.system), item.changed)
-		paint(p, layout(&b, g, p), 960, 640)
+		commands := layout(&b, g, p)
+		separators := 0
+		for i in 0 ..< commands.length {
+			cmd := commands.internalArray[i]
+			if cmd.commandType != .Text || cmd.boundingBox.y < g.height - g.footer {continue}
+			data := cmd.renderData.text
+			value := string(data.stringContents.chars[:data.stringContents.length])
+			if value == "|" {
+				separators += 1
+				testing.expect(
+					t,
+					abs(data.textColor[0] - theme.panel[0]) < abs(theme.muted[0] - theme.panel[0]),
+				)
+			} else {testing.expect_value(t, data.textColor, theme.muted)}
+		}
+		testing.expect_value(t, separators, 2)
+		paint(p, commands, 960, 640)
 		for icon, kind in p.icons {
 			testing.expect_value(t, icon, icons[kind])
 			r, green, blue: u8

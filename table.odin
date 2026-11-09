@@ -1,6 +1,7 @@
 package main
 
 import "core:fmt"
+import "core:strings"
 import "core:time"
 import clay "vendor/clay"
 import sdl "vendor:sdl3"
@@ -217,6 +218,18 @@ table_row :: proc(b: ^Browser, index: int, g: Geometry, p: ^Painter) {
 	}
 }
 
+footer_label :: proc(value: string, color: clay.Color, font_size: f32, separate: bool) {
+	if !separate {label(value, color, font_size); return}
+	separator := color
+	for i in 0 ..< 3 {separator[i] = (color[i] + theme.panel[i]) / 2}
+	rest, first := value, true
+	for part in strings.split_by_byte_iterator(&rest, '|') {
+		if !first {label("|", separator, font_size)}
+		label(part, color, font_size)
+		first = false
+	}
+}
+
 layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.RenderCommand) {
 	clay.SetLayoutDimensions({g.width, g.height})
 	clay.BeginLayout()
@@ -286,7 +299,12 @@ layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.Ren
 				width -= f32(text_width(p.font, free_space)) + g.gap
 			}
 			if clay.UI()({layout = {sizing = {width = clay.SizingGrow()}}}) {
-				label(fit_label(p.font, summary, width), color, g.font_size)
+				footer_label(
+					fit_label(p.font, summary, width),
+					color,
+					g.font_size,
+					b.pending_disk == nil && b.pending_files == nil && b.status_error == "",
+				)
 			}
 			if free_space != "" {label(free_space, theme.muted, g.font_size)}
 		}

@@ -231,7 +231,7 @@ large_directory_layout :: proc(t: ^testing.T) {
 		}
 		testing.expect(t, file_selection, "the selected file must have an inset highlight")
 		paint(&p, commands, 960, 640)
-		testing.expect(t, len(p.slots) <= 3 * g.rows + min(g.rows, len(b.places.entries)) + 6)
+		testing.expect(t, len(p.slots) <= 3 * g.rows + min(g.rows, len(b.places.entries)) + 10)
 	}
 	// Reusing text slots after content changes must not retain old labels.
 	b.entries[b.visible[b.first]].name = "changed.txt"
@@ -262,7 +262,7 @@ large_directory_layout :: proc(t: ^testing.T) {
 			   name_right {testing.expect(t, box.x + box.width <= name_right + 0.01)} else if box.x < size_right {testing.expect(t, box.x + box.width <= size_right + 0.01)} else {testing.expect(t, box.x + box.width <= g.width - g.padding + 0.01)}
 		}
 		paint(&p, commands, size[0], size[1])
-		testing.expect(t, len(p.slots) <= 3 * g.rows + min(g.rows, len(b.places.entries)) + 6)
+		testing.expect(t, len(p.slots) <= 3 * g.rows + min(g.rows, len(b.places.entries)) + 10)
 	}
 	verify_disk_usage_layout(t, &p)
 	// Extra rows must not change the viewport or move the footer.
