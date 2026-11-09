@@ -23,6 +23,10 @@ run folder=".": build
 smoke: build
 	SDL_VIDEODRIVER=dummy SDL_RENDER_DRIVER=software ./build/stuff --smoke
 
+# draw one frame in the current Wayland session.
+smoke-wayland: build
+	SDL_VIDEODRIVER=wayland ./build/stuff --smoke
+
 # rebuild the vendored Linux x86-64 library after a Clay update.
 clay: _dirs
 	cc -std=c99 -O3 -fPIC -march=x86-64 -mtune=generic -DCLAY_IMPLEMENTATION -x c -c vendor/clay/clay.h -o build/clay.o
