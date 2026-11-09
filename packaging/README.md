@@ -21,4 +21,4 @@ just test-packaging
 
 recipe generation needs both release archives, Arch's `makepkg`, and a non-root user. package tests also need the runtime and build dependencies, `namcap`, and a monospace font.
 
-these commands do not publish anything. publishing starts only when a release tag is pushed.
+these commands do not publish anything. pushing a release tag starts publication. if the AUR job fails, retry the existing release with `gh workflow run aur.yml -f tag=vX.Y.Z`. this does not rebuild assets or move the tag.

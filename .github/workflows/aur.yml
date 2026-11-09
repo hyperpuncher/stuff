@@ -1,0 +1,102 @@
+name: publish AUR packages
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+    secrets:
+      AUR_KEY:
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to publish
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aur-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-26.04
+    container: archlinux:base-devel
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - name: install tools
+        run: pacman -Syu --noconfirm --needed git github-cli openssh
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.tag }}
+      - name: download release archives
+        run: |
+          mkdir -p build/release
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir build/release
+          (cd build/release && sha256sum --check SHA256SUMS)
+      - name: prepare package recipes
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          useradd --create-home builder
+          mkdir -p build/aur
+          chown -R builder:builder build/aur
+          runuser -u builder -- bash scripts/prepare-aur.sh "${TAG#v}" build/release build/aur
+      - name: publish AUR packages
+        env:
+          AUR_KEY: ${{ secrets.AUR_KEY }}
+        run: |
+          umask 077
+          test -n "$AUR_KEY"
+          printf '%s\n' "$AUR_KEY" > "$RUNNER_TEMP/aur_key"
+          trap 'shred -u "$RUNNER_TEMP/aur_key"' EXIT
+          export GIT_SSH_COMMAND="ssh -i $RUNNER_TEMP/aur_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$GITHUB_WORKSPACE/.github/aur_known_hosts"
+          for package in stuff-bin stuff-git; do
+            source="build/aur/$package"
+            directory="$RUNNER_TEMP/$package"
+            git -c init.defaultBranch=master clone --depth=1 --single-branch --no-tags "ssh://aur@aur.archlinux.org/$package.git" "$directory"
+            version=$(awk '$1 == "pkgver" { print $3 }' "$source/.SRCINFO")
+            if [[ -f $directory/.SRCINFO ]]; then
+              current=$(awk '$1 == "pkgver" { print $3 }' "$directory/.SRCINFO")
+              revision=$(awk '$1 == "pkgrel" { print $3 }' "$directory/.SRCINFO")
+              # VCS packages need recipe changes, not release-only version bumps.
+              if [[ $package == stuff-git ]]; then
+                version=$current
+                sed -i "s/^pkgver=.*/pkgver=$version/" "$source/PKGBUILD"
+              fi
+              if (( $(vercmp "$version" "$current") < 0 )); then
+                echo "refusing to downgrade $package from $current to $version" >&2
+                exit 1
+              fi
+              if [[ $version == "$current" ]]; then
+                sed -i "s/^pkgrel=.*/pkgrel=$revision/" "$source/PKGBUILD"
+                if ! cmp -s "$source/PKGBUILD" "$directory/PKGBUILD"; then
+                  sed -i "s/^pkgrel=.*/pkgrel=$((revision + 1))/" "$source/PKGBUILD"
+                fi
+                runuser -u builder -- makepkg --dir "$source" --printsrcinfo > "$source/.SRCINFO"
+              fi
+            fi
+            cp "$source/PKGBUILD" "$source/.SRCINFO" LICENSE "$directory/"
+            git -C "$directory" add PKGBUILD .SRCINFO LICENSE
+            if git -C "$directory" diff --cached --quiet; then
+              echo "$package is current"
+              continue
+            fi
+            git -C "$directory" diff --cached --check
+            git -C "$directory" config user.name hyperpuncher
+            git -C "$directory" config user.email hyperpuncher@users.noreply.github.com
+            git -C "$directory" commit -m "chore: update $package for $RELEASE_TAG"
+            git -C "$directory" push origin HEAD:master
+          done
