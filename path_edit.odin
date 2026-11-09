@@ -15,11 +15,14 @@ Path_Edit :: struct {
 	cursor, anchor:     int,
 	offset:             f32,
 	font:               ^ttf.Font, // Borrowed for pointer hit testing on the UI thread.
+	undo, redo:         [dynamic]Edit_Snapshot,
 }
 
 path_edit_end :: proc(edit: ^Path_Edit) {
 	delete(edit.value)
 	delete(edit.composition)
+	edit_history_clear(&edit.undo)
+	edit_history_clear(&edit.redo)
 	font := edit.font
 	edit^ = {
 		font = font,
@@ -75,14 +78,21 @@ path_edit_word_boundary :: proc(value: string, cursor: int, forward: bool) -> in
 }
 
 path_edit_replace :: proc(b: ^Browser, value: string) {
+	edit := &b.header.edit
+	path_edit_replace_range(b, value, min(edit.cursor, edit.anchor), max(edit.cursor, edit.anchor))
+}
+
+path_edit_replace_range :: proc(b: ^Browser, value: string, low, high: int) {
 	if strings.contains_any(
 		value,
 		"\r\n\x00",
 	) {browser_message(b, "a path must fit on one line"); return}
 	edit := &b.header.edit
-	low, high := min(edit.cursor, edit.anchor), max(edit.cursor, edit.anchor)
 	next := fmt.aprintf("%s%s%s", edit.value[:low], value, edit.value[high:])
-	delete(edit.value)
+	if next != edit.value {
+		edit_history_push(&edit.undo, {edit.value, edit.cursor, edit.anchor})
+		edit_history_clear(&edit.redo)
+	} else {delete(next); next = edit.value}
 	delete(edit.composition)
 	edit.value, edit.composition = next, ""
 	edit.cursor, edit.anchor = low + len(value), low + len(value)
@@ -153,6 +163,7 @@ path_edit_input :: proc(
 	case .KEY_DOWN:
 		ctrl, shift := event.key.mod & sdl.KMOD_CTRL != {}, event.key.mod & sdl.KMOD_SHIFT != {}
 		key := event.key.key
+		if ctrl && key == sdl.K_Z {path_edit_undo(edit, shift); return true, nil}
 		if ctrl && key == sdl.K_A {edit.anchor, edit.cursor = 0, len(edit.value); return true, nil}
 		copy := ctrl && key == sdl.K_C || ctrl && !shift && key == sdl.K_INSERT
 		cut := ctrl && key == sdl.K_X || shift && !ctrl && key == sdl.K_DELETE
@@ -187,9 +198,10 @@ path_edit_input :: proc(
 			   sdl.K_HOME {edit.cursor = 0} else if key == sdl.K_END {edit.cursor = len(edit.value)} else if !shift && edit.cursor != edit.anchor {edit.cursor = key == sdl.K_LEFT ? min(edit.cursor, edit.anchor) : max(edit.cursor, edit.anchor)} else {edit.cursor = path_edit_boundary(edit.value, edit.cursor, key == sdl.K_RIGHT, ctrl)}
 			if !shift {edit.anchor = edit.cursor}
 		case sdl.K_BACKSPACE, sdl.K_DELETE:
+			anchor := edit.anchor
 			if edit.cursor ==
-			   edit.anchor {edit.anchor = path_edit_boundary(edit.value, edit.cursor, key == sdl.K_DELETE, ctrl)}
-			path_edit_replace(b, "")
+			   anchor {anchor = path_edit_boundary(edit.value, edit.cursor, key == sdl.K_DELETE, ctrl)}
+			path_edit_replace_range(b, "", min(edit.cursor, anchor), max(edit.cursor, anchor))
 		}
 		return true, nil // File actions and navigation stay inactive while editing.
 	}
