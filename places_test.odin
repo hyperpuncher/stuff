@@ -97,9 +97,11 @@ xdg_places_and_navigation :: proc(t: ^testing.T) {
 	testing.expect(t, handle_event(&b, &event, g, &running))
 	testing.expect(t, b.status_error == "")
 	testing.expect_value(t, b.path, desktop)
+	// activating a place hands the keyboard to the file list.
+	testing.expect(t, !b.places.focused)
 	event.key.key = sdl.K_TAB
 	testing.expect(t, handle_event(&b, &event, g, &running))
-	testing.expect(t, !b.places.focused)
+	testing.expect(t, b.places.focused)
 
 	event = sdl.Event {
 		button = {type = .MOUSE_BUTTON_DOWN, button = sdl.BUTTON_X1},
@@ -115,7 +117,7 @@ xdg_places_and_navigation :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, handle_event(&b, &event, g, &running))
 	testing.expect_value(t, b.path, downloads)
-	testing.expect(t, b.places.focused)
+	testing.expect(t, !b.places.focused)
 	event.button.button = sdl.BUTTON_X1
 	testing.expect(t, handle_event(&b, &event, g, &running))
 	testing.expect_value(t, b.path, home)
@@ -123,8 +125,9 @@ xdg_places_and_navigation :: proc(t: ^testing.T) {
 		key = {type = .KEY_DOWN, key = sdl.K_TAB},
 	}
 	testing.expect(t, handle_event(&b, &event, g, &running))
-	testing.expect(t, !b.places.focused)
+	testing.expect(t, b.places.focused)
 	testing.expect(t, handle_event(&b, &event, g, &running))
+	testing.expect(t, !b.places.focused)
 	testing.expect_value(t, b.places.selected, 0)
 
 	// Sorting the table restores file-list focus without changing the selected entry.

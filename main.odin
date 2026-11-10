@@ -155,6 +155,7 @@ handle_input :: proc(
 		case sdl.K_RETURN, sdl.K_L:
 			if b.places.focused {
 				if len(b.places.entries) == 0 {return true, nil}
+				b.places.focused = false
 				return true, place_open(b, b.places.selected)
 			}
 			err = browser_enter(b)
@@ -217,9 +218,11 @@ handle_input :: proc(
 		if x < g.sidebar {
 			index := row_at(places_geometry(g), y, b.places.first, len(b.places.entries))
 			if index < 0 || b.places.entries[index].section {return false, nil}
-			b.places.focused = true
+			unmount := place_unmount_at(b.places.entries[index], g, x)
+			// opening a place hands the keyboard to its files; unmounting stays in the sidebar.
+			b.places.focused = unmount
 			b.places.selected = index
-			return true, place_open(b, index, place_unmount_at(b.places.entries[index], g, x))
+			return true, place_open(b, index, unmount)
 		}
 		if y >= g.header && y < g.header + g.row {
 			if column, ok := column_at(g, x); ok {
