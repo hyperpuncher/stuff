@@ -36,10 +36,16 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "expected a stable vX.Y.Z tag" >&2; exit 1; }
+      - name: cache downloaded packages
+        uses: actions/cache@v6
+        with:
+          path: /var/cache/apt/archives
+          key: apt-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/build.yml') }}
+          restore-keys: apt-${{ runner.os }}-${{ runner.arch }}-
       - name: install system packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends clang just pkg-config libsdl3-dev libsdl3-image-dev libsdl3-ttf-dev libfontconfig-dev libdbus-1-dev libudev-dev libwayland-dev dbus-daemon fonts-dejavu-core labwc shellcheck desktop-file-utils zstd
+          sudo apt-get install -y --no-install-recommends just libsdl3-dev libsdl3-image-dev libsdl3-ttf-dev fontconfig libdbus-1-dev libudev-dev libwayland-dev dbus-daemon fonts-dejavu-core labwc desktop-file-utils
       - uses: laytan/setup-odin@v2
         with:
           token: ${{ github.token }}
@@ -56,7 +62,6 @@ jobs:
           if-no-files-found: error
 
   aur-check:
-    needs: linux
     runs-on: ubuntu-26.04
     container: archlinux:base-devel
     timeout-minutes: 20
@@ -65,17 +70,13 @@ jobs:
         shell: bash
     steps:
       - name: install package tools and dependencies
-        run: pacman -Syu --noconfirm --needed git just odin dbus fontconfig hicolor-icon-theme sdl3 sdl3_image sdl3_ttf systemd-libs udisks2 wayland xdg-utils ttf-dejavu namcap desktop-file-utils
+        run: pacman -Syu --noconfirm --needed git just odin dbus fontconfig hicolor-icon-theme sdl3 sdl3_image sdl3_ttf systemd-libs udisks2 wayland xdg-utils ttf-dejavu namcap desktop-file-utils zstd
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: stuff-*
-          path: build/release
-          merge-multiple: true
       - name: build and check AUR packages
         run: |
           useradd --create-home builder
           chown -R builder:builder "$GITHUB_WORKSPACE"
+          runuser -u builder -- just bundle
           runuser -u builder -- just test-packaging

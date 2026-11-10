@@ -3,7 +3,13 @@ set -euo pipefail
 archives=${1:-build/release}
 out="$PWD/build/package-tests"
 checksum_x86_64=$(sha256sum "$archives/stuff-linux-x64.tar.zst")
-checksum_aarch64=$(sha256sum "$archives/stuff-linux-arm64.tar.zst")
+if [[ -f "$archives/stuff-linux-arm64.tar.zst" ]]; then
+	checksum_aarch64=$(sha256sum "$archives/stuff-linux-arm64.tar.zst")
+else
+	# makepkg on x86-64 never fetches the aarch64 source; the release sets the real digest.
+	echo "no aarch64 archive in $archives; the recipe gets a placeholder digest" >&2
+	checksum_aarch64="$(printf '0%.0s' {1..64})  placeholder"
+fi
 bash scripts/prepare-aur.sh 0.0.0 "${checksum_x86_64%% *}" "${checksum_aarch64%% *}" "$out"
 
 # use the local archive; never download an unpublished test release.
