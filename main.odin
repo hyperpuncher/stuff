@@ -12,6 +12,32 @@ import sdl "vendor:sdl3"
 import ttf "vendor:sdl3/ttf"
 
 handle_event :: proc(b: ^Browser, event: ^sdl.Event, g: Geometry, running: ^bool) -> bool {
+	autoscroll_stopped := false
+	if b.autoscroll.active {
+		#partial switch event.type {
+		case .MOUSE_MOTION:
+			autoscroll_motion(b, g, event.motion.y)
+			return false
+		case .MOUSE_BUTTON_UP:
+			if event.button.button == sdl.BUTTON_MIDDLE {b.autoscroll = {}; return true}
+			return false
+		case .KEY_DOWN,
+		     .MOUSE_BUTTON_DOWN,
+		     .MOUSE_WHEEL,
+		     .WINDOW_MOUSE_LEAVE,
+		     .WINDOW_FOCUS_LOST,
+		     .WINDOW_HIDDEN,
+		     .WINDOW_MINIMIZED,
+		     .WINDOW_PIXEL_SIZE_CHANGED,
+		     .WINDOW_DISPLAY_SCALE_CHANGED,
+		     .DROP_BEGIN:
+			b.autoscroll = {}
+			autoscroll_stopped = true
+			// A stop click must not select or open the row underneath it.
+			if event.type == .MOUSE_BUTTON_DOWN ||
+			   event.type == .KEY_DOWN && event.key.key == sdl.K_ESCAPE {return true}
+		}
+	}
 	if file_drop_input(b, event, g) {return true}
 	pointer_changed := false
 	#partial switch event.type {
@@ -28,7 +54,7 @@ handle_event :: proc(b: ^Browser, event: ^sdl.Event, g: Geometry, running: ^bool
 		if cancelled {b.drag = {}; b.menu.active = false}
 		if event.type == .WINDOW_FOCUS_LOST {b.header.edit.dragging = false}
 		b.pointer.active = false
-		return hover_update(b, g) || cancelled
+		return hover_update(b, g) || cancelled || autoscroll_stopped
 	case .KEY_DOWN:
 		file_drag_cancel_press(b)
 		pointer_changed = b.drag.active
@@ -42,7 +68,7 @@ handle_event :: proc(b: ^Browser, event: ^sdl.Event, g: Geometry, running: ^bool
 	}
 	changed, err := handle_input(b, event, g, running)
 	if err != nil {browser_message(b, fmt.tprintf("cannot read folder: %v", err))}
-	return changed || pointer_changed
+	return changed || pointer_changed || autoscroll_stopped
 }
 
 selection_key :: proc(key: sdl.Keycode, selected, first: ^int, count, rows: int) -> bool {
@@ -199,6 +225,8 @@ handle_input :: proc(
 			return true, browser_history(b, true)
 		case sdl.BUTTON_X2:
 			return true, browser_history(b, false)
+		case sdl.BUTTON_MIDDLE:
+			return autoscroll_begin(b, g, event.button.x, event.button.y), nil
 		case sdl.BUTTON_RIGHT:
 			return menu_open_places(b, g, event.button.x, event.button.y) ||
 				menu_open(b, g, event.button.x, event.button.y),
@@ -247,6 +275,7 @@ handle_input :: proc(
 ui_wait_timeout :: proc(b: ^Browser, now: u64) -> i32 {
 	timeout := i32(-1)
 	if len(b.opens) > 0 {timeout = 100}
+	if b.autoscroll.active && b.autoscroll.rate != 0 {timeout = 16}
 	if b.header.copied_until != 0 {
 		remaining := b.header.copied_until > now ? i32(b.header.copied_until - now) : 0
 		timeout = timeout < 0 ? remaining : min(timeout, remaining)
@@ -378,6 +407,7 @@ run :: proc() -> int {
 		dirty = file_drag_poll(&b) || dirty
 		dirty = storage_poll(&b) || dirty
 		dirty = size_poll(&b) || dirty
+		dirty = autoscroll_update(&b, g, sdl.GetTicks()) || dirty
 		dirty = file_open_poll(&b) || dirty
 		dirty = header_update(&b.header, sdl.GetTicks()) || dirty
 		if dirty {

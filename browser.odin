@@ -51,6 +51,7 @@ Browser :: struct {
 	space_device:           linux.Dev,
 	pending_disk:           ^Disk_Operation, // Borrowed until the worker returns its result.
 	drag:                   Scroll_Drag,
+	autoscroll:             Auto_Scroll,
 	menu:                   Context_Menu,
 	pending_files:          ^File_Operation, // Borrowed until its result is applied.
 	undo_files, redo_files: [dynamic]File_Batch,
@@ -91,6 +92,7 @@ browser_destroy :: proc(b: ^Browser) {
 }
 
 browser_load :: proc(b: ^Browser, path: string) -> os.Error {
+	b.autoscroll = {}
 	if path == TRASH_PATH {
 		if !trash_view_request(b) {return .Unsupported}
 		if b.path == TRASH_PATH {browser_message(b, ""); return nil}

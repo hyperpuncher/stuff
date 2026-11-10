@@ -2,6 +2,68 @@ package main
 
 import "core:math"
 import clay "vendor/clay"
+import sdl "vendor:sdl3"
+
+Auto_Scroll :: struct {
+	active, places:  bool,
+	x, y:            f32,
+	rate, remainder: f64,
+	tick:            u64,
+}
+
+autoscroll_begin :: proc(b: ^Browser, g: Geometry, x, y: f32) -> bool {
+	places := x < g.sidebar
+	view := places ? places_geometry(g) : g
+	if b.header.edit.active ||
+	   b.menu.active ||
+	   x < 0 ||
+	   x >= g.width ||
+	   y < view.list_top ||
+	   y >= list_bottom(view) ||
+	   scrollbar_for(b, g, places).max_first <= 0 {return false}
+	file_drag_cancel_press(b)
+	b.drag = {}
+	b.places.focused = places
+	b.pointer.active = false
+	b.hovered = 0
+	b.autoscroll = {
+		active = true,
+		places = places,
+		x      = x,
+		y      = y,
+		tick   = sdl.GetTicks(),
+	}
+	return true
+}
+
+autoscroll_motion :: proc(b: ^Browser, g: Geometry, y: f32) {
+	a := &b.autoscroll
+	delta := (y - a.y) / g.scale
+	distance := max(abs(delta) - 12, 0)
+	rate := f64(min(distance * distance / 800, 120))
+	if delta < 0 {rate = -rate}
+	if rate == 0 || (rate < 0) != (a.rate < 0) {a.remainder = 0}
+	a.rate = rate
+}
+
+autoscroll_update :: proc(b: ^Browser, g: Geometry, now: u64) -> bool {
+	a := &b.autoscroll
+	if !a.active {return false}
+	last := scrollbar_for(b, g, a.places).max_first
+	if last <= 0 {a^ = {}; return true}
+	first := a.places ? &b.places.first : &b.first
+	if a.rate < 0 && first^ <= 0 || a.rate > 0 && first^ >= last {
+		a.rate, a.remainder = 0, 0
+	}
+	// Use elapsed time, but do not jump after a stalled frame.
+	a.remainder += a.rate * f64(min(now - a.tick, 100)) / 1000
+	a.tick = now
+	rows := int(a.remainder)
+	a.remainder -= f64(rows)
+	previous := first^
+	first^ = clamp(first^ + rows, 0, last)
+	return first^ != previous
+}
 
 Scroll_Drag :: struct {
 	active, places: bool,
@@ -75,6 +137,25 @@ scrollbar_press :: proc(b: ^Browser, g: Geometry, places: bool, y: f32) {
 }
 
 scrollbar_layout :: proc(b: ^Browser, g: Geometry, places: bool) {
+	if a := b.autoscroll; a.active && a.places == places {
+		size := 24 * g.scale
+		if clay.UI(clay.ID("autoscroll"))(
+		{
+			layout = {
+				sizing = {clay.SizingFixed(size), clay.SizingFixed(size)},
+				childAlignment = {x = .Center, y = .Center},
+			},
+			floating = {
+				attachTo = .Root,
+				offset = {a.x - size / 2, a.y - size / 2},
+				zIndex = 2,
+				pointerCaptureMode = .Passthrough,
+			},
+			backgroundColor = theme.text,
+			cornerRadius = clay.CornerRadiusAll(size / 2),
+		},
+		) {label("↕", theme.background, g.font_size)}
+	}
 	bar := scrollbar_for(b, g, places)
 	if bar.track.height <= 0 {return}
 	id := scrollbar_id(places)

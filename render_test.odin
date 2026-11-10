@@ -225,6 +225,22 @@ large_directory_layout :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, found, "the changed filename must appear in the rendered text")
 
+	// The autoscroll marker stays at the click point without moving the list.
+	x, y := g.sidebar + 100, g.list_top + 100
+	testing.expect(t, autoscroll_begin(&b, g, x, y))
+	paint(&p, layout(&b, g, &p), 960, 640)
+	marker := clay.GetElementData(clay.ID("autoscroll"))
+	testing.expect(t, marker.found)
+	testing.expect_value(t, marker.boundingBox.x + marker.boundingBox.width / 2, x)
+	testing.expect_value(t, marker.boundingBox.y + marker.boundingBox.height / 2, y)
+	running := true
+	event := sdl.Event {
+		button = {type = .MOUSE_BUTTON_UP, button = sdl.BUTTON_MIDDLE},
+	}
+	_ = handle_event(&b, &event, g, &running)
+	paint(&p, layout(&b, g, &p), 960, 640)
+	testing.expect(t, !clay.GetElementData(clay.ID("autoscroll")).found)
+
 	// Names must not overlap the metadata columns, even in a narrow or tall window.
 	sizes := [?][2]i32{{MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT}, {960, 4096}, {1920, 1080}}
 	for size in sizes {
