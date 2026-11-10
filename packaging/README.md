@@ -10,15 +10,11 @@ both architectures run checks, tests, and a private headless Wayland drag test o
 
 `xdg-mime default stuff.desktop inode/directory` selects stuff for opening folders.
 
-`ShowItems` and `ShowFolders` use the separate `org.freedesktop.FileManager1` session service. the package keeps its activation file inactive under `/usr/share/stuff`. to enable it:
+`ShowItems` and `ShowFolders` use the separate `org.freedesktop.FileManager1` session service. the package installs `/usr/share/dbus-1/services/stuff.FileManager1.service` active, so browsers can reveal files at once. the file name differs from Nautilus's `org.freedesktop.FileManager1.service` to avoid a package file conflict, but both define the same bus name.
 
-```sh
-data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
-mkdir -p "$data_home/dbus-1/services"
-ln -s /usr/share/stuff/org.freedesktop.FileManager1.service "$data_home/dbus-1/services/org.freedesktop.FileManager1.service"
-```
+when several installed services define that name in one directory, the daemon picks one without a rule. to choose the provider per user, link its service file into `${XDG_DATA_HOME:-~/.local/share}/dbus-1/services`, as described in `File manager functionality#D-Bus`. the per-user file wins over `/usr/share`. kill a running provider first; it keeps the name until it exits.
 
-the command does not replace an existing file. disable any competing per-user activation files and close the previous running provider before starting stuff. no running provider is replaced automatically. properties requests return `NotSupported` until stuff has a properties dialog.
+properties requests return `NotSupported` until stuff has a properties dialog.
 
 ## setup
 

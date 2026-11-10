@@ -5,7 +5,7 @@ mkdir -p "$(dirname "$out")"
 tar --zstd -cf "$out" \
 	build/stuff \
 	assets/stuff.desktop \
-	assets/org.freedesktop.FileManager1.service \
+	assets/stuff.FileManager1.service \
 	assets/stuff.svg \
 	packaging/linux/install.sh \
 	LICENSE \
