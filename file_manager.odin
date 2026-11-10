@@ -181,9 +181,12 @@ file_manager_worker :: proc(manager: ^File_Manager) {
 			{fd = manager.stop_fd, events = {.IN}},
 		}
 		if dbus_connection_get_outgoing_size(manager.bus) > 0 {fds[0].events |= {.OUT}}
-		_, err := linux.poll(fds[:], -1)
+		// core:sys/linux turns an infinite `poll` timeout into an invalid ppoll
+		// timespec on arm64, so wait without a timeout here.
+		_, err := linux.ppoll(fds[:], nil, nil)
 		if err == .EINTR {continue}
-		if err != .NONE || fds[1].revents != {} {return}
+		if err != .NONE {fmt.eprintfln("cannot wait for file manager requests: %v", err); return}
+		if fds[1].revents != {} {return}
 	}
 }
 
