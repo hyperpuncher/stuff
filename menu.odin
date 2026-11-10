@@ -11,21 +11,23 @@ Menu_Action :: enum {
 	New_Folder,
 	Open_With,
 	Restore,
+	Empty_Trash,
 	Trash,
 	Select_All,
 }
 Context_Menu :: struct {
-	active, paste: bool,
-	x, y, width:   f32,
-	selected:      int,
+	active, paste, places: bool,
+	x, y, width:           f32,
+	selected:              int,
 }
 
 menu_visible :: proc(b: ^Browser, action: Menu_Action) -> bool {
+	if b.menu.places {return action == .Empty_Trash}
 	if action == .Open_With {
 		if len(b.marks) != 1 {return false}
 		for index in b.marks {return b.entries[index].type == .Regular || b.entries[index].type == .Symlink}
 	}
-	if action == .Restore {return b.path == TRASH_PATH}
+	if action == .Restore || action == .Empty_Trash {return b.path == TRASH_PATH}
 	if action == .Trash {return b.path != TRASH_PATH}
 	if action == .Paste {return b.menu.paste && b.path != TRASH_PATH}
 	if action == .Rename {return len(b.marks) == 1 && b.path != TRASH_PATH}
@@ -50,6 +52,7 @@ menu_box :: proc(b: ^Browser, g: Geometry) -> clay.BoundingBox {
 
 menu_enabled :: proc(b: ^Browser, action: Menu_Action) -> bool {
 	if !menu_visible(b, action) {return false}
+	if b.menu.places {return b.pending_files == nil && b.pending_trash == nil}
 	switch action {
 	case .Rename, .New_Folder, .Open_With:
 		return b.pending_files == nil
@@ -59,6 +62,8 @@ menu_enabled :: proc(b: ^Browser, action: Menu_Action) -> bool {
 		return b.menu.paste && b.pending_files == nil
 	case .Trash, .Restore:
 		return len(b.marks) > 0 && b.pending_files == nil
+	case .Empty_Trash:
+		return len(b.visible) > 0 && b.pending_files == nil && b.pending_trash == nil
 	case .Select_All:
 		return len(b.visible) > 0
 	}
@@ -80,20 +85,36 @@ menu_action_at :: proc(b: ^Browser, g: Geometry, x, y: f32) -> int {
 	return -1
 }
 
+menu_show :: proc(b: ^Browser, x, y: f32) {
+	b.menu = {
+		active   = true,
+		x        = x,
+		y        = y,
+		selected = -1,
+		width    = b.menu.width,
+	}
+}
+
 menu_open :: proc(b: ^Browser, g: Geometry, x, y: f32) -> bool {
 	if x < g.sidebar || x >= g.width || y < g.list_top || y >= list_bottom(g) {return false}
 	row := row_at(g, y, b.first, len(b.visible))
 	if row < 0 {selection_clear(b)} else if !b.marks[b.visible[row]] {selection_single(b, row)}
 	b.places.focused = false
 	b.drag = {}
-	b.menu = {
-		active   = true,
-		paste    = b.pending_files == nil && file_clipboard_has_files(),
-		x        = x,
-		y        = y,
-		selected = -1,
-		width    = b.menu.width,
-	}
+	menu_show(b, x, y)
+	b.menu.paste = b.pending_files == nil && file_clipboard_has_files()
+	return true
+}
+
+// Right-clicking the trash place offers the only action that belongs to it.
+menu_open_places :: proc(b: ^Browser, g: Geometry, x, y: f32) -> bool {
+	if x < 0 || x >= g.sidebar {return false}
+	index := row_at(places_geometry(g), y, b.places.first, len(b.places.entries))
+	if index < 0 ||
+	   b.places.entries[index].section ||
+	   b.places.entries[index].path != TRASH_PATH {return false}
+	menu_show(b, x, y)
+	b.menu.places = true
 	return true
 }
 
@@ -112,6 +133,8 @@ menu_execute :: proc(b: ^Browser, action: Menu_Action) {
 		open_with_start(b)
 	case .Restore:
 		file_restore_start(b)
+	case .Empty_Trash:
+		trash_empty_start(b)
 	case .Trash:
 		file_operation_start(b, true)
 	case .Select_All:
@@ -219,26 +242,29 @@ popup_shadow_layout :: proc(box: clay.BoundingBox, scale: f32, p: ^Painter) {
 
 menu_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 	names := [Menu_Action]string {
-		.Copy       = "copy",
-		.Paste      = "paste",
-		.Rename     = "rename",
-		.New_Folder = "new folder",
-		.Trash      = "move to trash",
-		.Restore    = "restore",
-		.Open_With  = "open with…",
-		.Select_All = "select all",
+		.Copy        = "copy",
+		.Paste       = "paste",
+		.Rename      = "rename",
+		.New_Folder  = "new folder",
+		.Trash       = "move to trash",
+		.Restore     = "restore",
+		.Empty_Trash = "empty trash",
+		.Open_With   = "open with…",
+		.Select_All  = "select all",
 	}
 	// Keep measured geometry available for input before the popup's first frame.
-	b.menu.width = f32(text_width(p.font, names[.Trash])) + 60 * g.scale
+	widest := b.menu.places ? names[.Empty_Trash] : names[.Trash]
+	b.menu.width = f32(text_width(p.font, widest)) + 60 * g.scale
 	icons := [Menu_Action]Icon {
-		.Copy       = .CopyPath,
-		.Paste      = .Paste,
-		.Rename     = .Rename,
-		.New_Folder = .NewFolder,
-		.Trash      = .Trash,
-		.Restore    = .Restore,
-		.Open_With  = .OpenWith,
-		.Select_All = .SelectAll,
+		.Copy        = .CopyPath,
+		.Paste       = .Paste,
+		.Rename      = .Rename,
+		.New_Folder  = .NewFolder,
+		.Trash       = .Trash,
+		.Restore     = .Restore,
+		.Empty_Trash = .Trash,
+		.Open_With   = .OpenWith,
+		.Select_All  = .SelectAll,
 	}
 	if !b.menu.active {return}
 	box := menu_box(b, g)

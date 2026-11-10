@@ -83,6 +83,7 @@ file_operation_failed :: proc(op: ^File_Operation, path: string, err: os.Error) 
 
 file_operation_run :: proc(op: ^File_Operation) {
 	if op.kind == .List_Trash {trash_view_read(op); return}
+	if op.kind == .Empty_Trash {trash_empty_run(op); return}
 	if op.kind ==
 	   .Open_With {op.error = open_with_run(op); if op.error != "" {op.failed = 1}; return}
 	if op.history != .Record {file_history_run(op); return}
@@ -183,6 +184,10 @@ file_operation_apply :: proc(b: ^Browser, op: ^File_Operation) -> bool {
 		if err := browser_load(b, b.path); err != nil {
 			browser_message(b, fmt.tprintf("cannot refresh folder: %v", err))
 		} else {browser_restore_location(b, location, cursor)}
+	}
+	if op.kind == .Empty_Trash {
+		if op.failed > 0 {browser_message(b, fmt.tprintf("cannot empty trash: %s", op.error))}
+		return true
 	}
 	if op.failed > 0 {
 		verb :=

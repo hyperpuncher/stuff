@@ -11,6 +11,7 @@ File_Action :: enum {
 	New_Folder,
 	Restore,
 	List_Trash,
+	Empty_Trash,
 	Open_With,
 }
 File_History_Mode :: enum {

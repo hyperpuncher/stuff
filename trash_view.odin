@@ -61,23 +61,11 @@ trash_read_root :: proc(
 	local, shared: bool,
 	seen: ^map[[2]u64]bool,
 ) -> os.Error {
-	parent, name := os.split_path(root)
-	parent_c := strings.clone_to_cstring(parent)
-	defer delete(parent_c)
-	fd, open_err := linux.open(parent_c, {.DIRECTORY, .NOFOLLOW, .CLOEXEC})
+	trash, open_err := trash_root_open(root, shared)
 	if open_err != .NONE {
 		if local && (open_err == .EACCES || open_err == .EPERM) {return .Unsupported}
 		return open_err
 	}
-	defer linux.close(fd)
-	if shared {
-		st: linux.Stat
-		if err := linux.fstat(fd, &st); err != .NONE {return err}
-		if transmute(u32)st.mode & 0o1000 == 0 {return .Unsupported}
-	}
-	name_c := strings.clone_to_cstring(name)
-	defer delete(name_c)
-	trash := trash_private_open_at(fd, name_c) or_return
 	defer linux.close(trash)
 	st: linux.Stat
 	if err := linux.fstat(trash, &st); err != .NONE {return err}
@@ -128,6 +116,41 @@ trash_read_root :: proc(
 	return err
 }
 
+Trash_Root :: struct {
+	root, top:     string,
+	local, shared: bool,
+}
+
+// Every trash location this user can see, including other mounted filesystems.
+trash_roots :: proc(home: string, mounts: []Mount) -> [dynamic]Trash_Root {
+	roots: [dynamic]Trash_Root
+	for i in -1 ..< len(mounts) {
+		top := i < 0 ? "/" : mounts[i].path
+		for variant in 0 ..< (i < 0 ? 1 : 2) {
+			root := strings.clone(home)
+			if i >= 0 {
+				root =
+					variant == 0 ? fmt.aprintf("%s/.Trash/%d", strings.trim_suffix(top, "/"), linux.getuid()) : fmt.aprintf("%s/.Trash-%d", strings.trim_suffix(top, "/"), linux.getuid())
+			}
+			append(
+				&roots,
+				Trash_Root {
+					root = root,
+					top = top,
+					local = i >= 0,
+					shared = i >= 0 && variant == 0,
+				},
+			)
+		}
+	}
+	return roots
+}
+
+trash_roots_destroy :: proc(roots: ^[dynamic]Trash_Root) {
+	for root in roots {delete(root.root)}
+	delete(roots^)
+}
+
 trash_view_read :: proc(op: ^File_Operation) {
 	op.records = make(map[string]File_Change)
 	seen := make(map[[2]u64]bool)
@@ -135,24 +158,13 @@ trash_view_read :: proc(op: ^File_Operation) {
 	mounts, err := mounts_read()
 	if err != nil {file_operation_failed(op, TRASH_PATH, err); return}
 	defer mounts_destroy(mounts)
-	for i in -1 ..< len(mounts) {
+	roots := trash_roots(op.trash_home, mounts[:])
+	defer trash_roots_destroy(&roots)
+	for root in roots {
 		if sync.atomic_load(&op.cancel) {return}
-		top := i < 0 ? "/" : mounts[i].path
-		for variant in 0 ..< (i < 0 ? 1 : 2) {
-			root := op.trash_home
-			if i >= 0 {
-				root =
-					variant == 0 ? fmt.tprintf("%s/.Trash/%d", strings.trim_suffix(top, "/"), linux.getuid()) : fmt.tprintf("%s/.Trash-%d", strings.trim_suffix(top, "/"), linux.getuid())
-			}
-			err = trash_read_root(op, root, top, i >= 0, i >= 0 && variant == 0, &seen)
-			missing := err == linux.Errno.ENOENT || err == .Not_Exist
-			unusable := i >= 0 && (err == .Unsupported || err == linux.Errno.ENOTDIR)
-			if err != nil && !missing && !unusable {
-				op.failed += 1
-				if op.error == "" {op.error = fmt.aprintf("%s: %s", root, os.error_string(err))}
-			}
-			free_all(context.temp_allocator)
-		}
+		err = trash_read_root(op, root.root, root.top, root.local, root.shared, &seen)
+		trash_root_error(op, root.root, err, root.local)
+		free_all(context.temp_allocator)
 	}
 }
 
@@ -209,5 +221,12 @@ file_restore_start :: proc(b: ^Browser) {
 			},
 		)
 	}
+	if !file_operation_launch(b, op) {file_operation_destroy(op)}
+}
+
+trash_empty_start :: proc(b: ^Browser) {
+	if b.pending_files != nil || b.pending_trash != nil || b.storage == nil {return}
+	op := new(File_Operation)
+	op.kind, op.target, op.trash_home = .Empty_Trash, strings.clone(TRASH_PATH), trash_home_path()
 	if !file_operation_launch(b, op) {file_operation_destroy(op)}
 }

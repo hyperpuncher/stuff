@@ -203,7 +203,9 @@ handle_input :: proc(
 		case sdl.BUTTON_X2:
 			return true, browser_history(b, false)
 		case sdl.BUTTON_RIGHT:
-			return menu_open(b, g, event.button.x, event.button.y), nil
+			return menu_open_places(b, g, event.button.x, event.button.y) ||
+				menu_open(b, g, event.button.x, event.button.y),
+				nil
 		case sdl.BUTTON_LEFT:
 		case:
 			return false, nil

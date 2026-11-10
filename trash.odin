@@ -40,6 +40,39 @@ trash_private_open_at :: proc(parent: linux.Fd, name: cstring) -> (fd: linux.Fd,
 	return fd, nil
 }
 
+// Missing roots, and foreign or shared roots we may not read, are not failures.
+trash_ignored_error :: proc(err: os.Error, local: bool) -> bool {
+	return(
+		err == linux.Errno.ENOENT ||
+		err == .Not_Exist ||
+		local && (err == .Unsupported || err == linux.Errno.ENOTDIR) \
+	)
+}
+
+trash_root_error :: proc(op: ^File_Operation, root: string, err: os.Error, local: bool) {
+	if err == nil || trash_ignored_error(err, local) {return}
+	op.failed += 1
+	if op.error == "" {op.error = fmt.aprintf("%s: %s", root, os.error_string(err))}
+}
+
+// Opens a private trash root, or the user's subdirectory of a shared .Trash.
+trash_root_open :: proc(root: string, shared: bool) -> (linux.Fd, os.Error) {
+	parent, name := os.split_path(root)
+	parent_c := strings.clone_to_cstring(parent)
+	defer delete(parent_c)
+	fd, open_err := linux.open(parent_c, {.DIRECTORY, .NOFOLLOW, .CLOEXEC})
+	if open_err != .NONE {return -1, open_err}
+	defer linux.close(fd)
+	if shared {
+		st: linux.Stat
+		if err := linux.fstat(fd, &st); err != .NONE {return -1, err}
+		if transmute(u32)st.mode & 0o1000 == 0 {return -1, .Unsupported}
+	}
+	name_c := strings.clone_to_cstring(name)
+	defer delete(name_c)
+	return trash_private_open_at(fd, name_c)
+}
+
 trash_home_open :: proc(home: string) -> (linux.Fd, os.Error) {
 	if home == "" {return -1, .No_HOME_Variable}
 	parent, _ := os.split_path(home)
