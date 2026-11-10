@@ -11,6 +11,7 @@ import "core:thread"
 import sdl "vendor:sdl3"
 
 SIZE_CACHE_LIMIT :: 4096
+SIZE_REFRESH_MS :: 5000 // Recheck completed totals on tab activation, not on a timer.
 
 Size_State :: enum {
 	Pending,
@@ -18,10 +19,11 @@ Size_State :: enum {
 	Failed,
 }
 Size_Entry :: struct {
-	state:   Size_State,
-	bytes:   i64,
-	request: u64,
-	used:    u64,
+	state:         Size_State,
+	bytes:         i64,
+	request:       u64,
+	used:          u64,
+	refresh_after: u64,
 }
 Size_Request :: struct {
 	path:       string, // Owned by the queue, then the worker.
@@ -155,6 +157,7 @@ size_poll :: proc(b: ^Browser) -> bool {
 		if !exists {continue}
 		cached.state, cached.bytes = result.ok ? .Known : .Failed, result.bytes
 		cached.request = result.generation
+		cached.refresh_after = sdl.GetTicks() + SIZE_REFRESH_MS
 		b.sizes[result.path] = cached
 		changed = true
 	}
@@ -164,13 +167,15 @@ size_poll :: proc(b: ^Browser) -> bool {
 
 // Preload a screen on each side, but draw only the visible rows. Scrolling
 // retains overlapping scans and cancels roots outside the new preload range.
-// Cached totals stay visible while each folder visit refreshes them in the background.
+// Navigation refreshes totals. Tab changes reuse recent totals and matching
+// active scans. Pointer movement alone does not refresh completed totals.
 size_request_visible :: proc(b: ^Browser, rows: int) {
 	if b.size_service == nil || b.path == "" || b.path == TRASH_PATH || rows <= 0 {return}
 	if b.size_generation == 0 {size_cancel(b)}
 	// Startup loads the folder before the service exists.
 	sync.atomic_store(&b.size_service.generation, b.size_generation)
 	b.size_clock += 1
+	now := sdl.GetTicks()
 	first := clamp(b.first, 0, max(0, len(b.visible) - 1))
 	last := min(len(b.visible), first + rows + 1)
 	before, after := max(0, first - rows), min(len(b.visible), last + rows)
@@ -184,9 +189,15 @@ size_request_visible :: proc(b: ^Browser, rows: int) {
 	s := b.size_service
 	sync.mutex_lock(&s.mutex)
 	for scan in s.scans {
-		cached, exists := b.sizes[scan.path]
-		if scan.generation == b.size_generation && exists && cached.used == b.size_clock {continue}
 		if sync.atomic_load(&scan.cancel) {continue}
+		cached, exists := b.sizes[scan.path]
+		if scan.generation == b.size_generation && exists && cached.used == b.size_clock {
+			// A slow refresh must not submit another copy of its active root.
+			cached.request = b.size_generation
+			cached.refresh_after = now + SIZE_REFRESH_MS
+			b.sizes[scan.path] = cached
+			continue
+		}
 		sync.atomic_store(&scan.cancel, true)
 		if exists && cached.request == scan.generation {
 			cached.request = 0
@@ -211,6 +222,7 @@ size_request_visible :: proc(b: ^Browser, rows: int) {
 			cached := b.sizes[entry.fullpath]
 			if cached.request == b.size_generation {continue}
 			cached.request = b.size_generation
+			cached.refresh_after = now + SIZE_REFRESH_MS
 			b.sizes[entry.fullpath] = cached
 			append(
 				&s.queue,
@@ -222,6 +234,16 @@ size_request_visible :: proc(b: ^Browser, rows: int) {
 	sync.mutex_unlock(&s.mutex)
 	if queued {size_wake(s)}
 	size_cache_prune(b)
+}
+
+// Recheck old totals only when a tab becomes active. The request pass keeps
+// matching scans, even if a slow scan still has an old cached value.
+size_refresh_stale :: proc(b: ^Browser) {
+	now := sdl.GetTicks()
+	for _, &cached in b.sizes {
+		if cached.state == .Pending || now < cached.refresh_after {continue}
+		cached.request = 0
+	}
 }
 
 // Bound session history without evicting the current preload range.

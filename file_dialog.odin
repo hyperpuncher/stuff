@@ -6,7 +6,8 @@ import "core:strings"
 import clay "vendor/clay"
 
 file_dialog_box :: proc(g: Geometry) -> clay.BoundingBox {
-	width, height := min(480 * g.scale, g.width - 32 * g.scale), g.row + g.header + 16 * g.scale
+	width, height :=
+		min(480 * g.scale, g.width - 32 * g.scale), g.row + g.header - g.tabs + 16 * g.scale
 	return {(g.width - width) / 2, (g.height - height) / 2, width, height}
 }
 

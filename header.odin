@@ -102,7 +102,7 @@ header_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 		if clay.UI()(
 		{
 			layout = {
-				sizing = {clay.SizingGrow(), clay.SizingFixed(g.header)},
+				sizing = {clay.SizingGrow(), clay.SizingFixed(g.header - g.tabs)},
 				padding = {left = u16(16 * g.scale)},
 				childAlignment = {y = .Center},
 			},
@@ -130,7 +130,7 @@ header_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 	if clay.UI()(
 	{
 		layout = {
-			sizing = {clay.SizingGrow(), clay.SizingFixed(g.header)},
+			sizing = {clay.SizingGrow(), clay.SizingFixed(g.header - g.tabs)},
 			padding = {left = u16(12 * g.scale), right = u16(12 * g.scale)},
 			childGap = u16(8 * g.scale),
 			childAlignment = {y = .Center},
@@ -157,7 +157,7 @@ header_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 					layout = {
 						sizing = {
 							clay.SizingFixed(item.width),
-							clay.SizingFixed(g.header - 8 * g.scale),
+							clay.SizingFixed(g.header - g.tabs - 8 * g.scale),
 						},
 						padding = {left = u16(6 * g.scale), right = u16(6 * g.scale)},
 						childAlignment = {y = .Center},

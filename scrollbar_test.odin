@@ -1,5 +1,6 @@
 package main
 
+import "core:os"
 import "core:testing"
 import sdl "vendor:sdl3"
 
@@ -81,6 +82,7 @@ scrollbars_drag_only_their_own_pane :: proc(t: ^testing.T) {
 middle_button_autoscroll_keeps_selection_and_targets_one_pane :: proc(t: ^testing.T) {
 	b: Browser
 	defer browser_destroy(&b)
+	b.entries = make([]os.File_Info, 1000)
 	resize(&b.visible, 1000)
 	resize(&b.places.entries, 1000)
 	b.selected, b.places.selected = 3, 2
@@ -137,6 +139,7 @@ middle_button_autoscroll_keeps_selection_and_targets_one_pane :: proc(t: ^testin
 middle_button_autoscroll_stops_on_input_and_window_changes :: proc(t: ^testing.T) {
 	b: Browser
 	defer browser_destroy(&b)
+	b.entries = make([]os.File_Info, 1000)
 	resize(&b.visible, 1000)
 	g, running := geometry(960, 640, 1), true
 	x, y := g.sidebar + 100, g.list_top + 100

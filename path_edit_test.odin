@@ -178,11 +178,11 @@ verify_path_editor_rendering :: proc(t: ^testing.T, p: ^Painter) {
 	commands := layout(&b, g, p)
 	entry := clay.GetElementData(clay.ID("path-edit"))
 	testing.expect(t, entry.found)
-	testing.expect_value(t, entry.boundingBox.x, entry.boundingBox.y)
+	testing.expect_value(t, entry.boundingBox.x, entry.boundingBox.y - g.tabs)
 	testing.expect_value(
 		t,
 		g.width - entry.boundingBox.x - entry.boundingBox.width,
-		entry.boundingBox.y,
+		entry.boundingBox.y - g.tabs,
 	)
 	testing.expect(t, b.header.edit.offset > 0)
 	paint(p, commands, 960, 640)
@@ -194,7 +194,7 @@ verify_path_editor_rendering :: proc(t: ^testing.T, p: ^Painter) {
 		motion = {
 			type = .MOUSE_MOTION,
 			x = entry.boundingBox.x + entry.boundingBox.width - 10,
-			y = g.header / 2,
+			y = (g.tabs + g.header) / 2,
 		},
 	}
 	running := true

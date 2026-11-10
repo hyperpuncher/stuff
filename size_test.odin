@@ -10,6 +10,68 @@ import "core:testing"
 import "core:time"
 import sdl "vendor:sdl3"
 
+size_test_wait :: proc(t: ^testing.T, b: ^Browser, path: string, bytes: i64) {
+	start := time.tick_now()
+	for time.tick_since(start) < 5 * time.Second {
+		_ = size_poll(b)
+		if entry, exists := b.sizes[path];
+		   exists && entry.state == .Known && entry.bytes == bytes {return}
+		time.sleep(time.Millisecond)
+	}
+	testing.fail_now(t, "directory size did not refresh")
+}
+
+@(test)
+tab_changes_keep_recent_sizes_and_allow_expired_totals_to_refresh :: proc(t: ^testing.T) {
+	if !testing.expect(t, sdl.Init({.EVENTS})) {return}
+	defer sdl.Quit()
+	root, err := os.make_directory_temp("/tmp", "stuff-tab-sizes-", context.allocator)
+	if !testing.expect(t, err == nil) {return}
+	defer delete(root)
+	defer os.remove_all(root)
+	tree := fmt.aprintf("%s/tree", root)
+	defer delete(tree)
+	file := fmt.aprintf("%s/sub/file", tree)
+	defer delete(file)
+	testing.expect(t, os.make_directory_all(fmt.tprintf("%s/sub", tree)) == nil)
+	testing.expect(t, os.write_entire_file(file, "data") == nil)
+	b: Browser
+	defer browser_destroy(&b)
+	b.size_service = size_start(2)
+	if !testing.expect(t, b.size_service != nil) {return}
+	testing.expect(t, browser_load(&b, root) == nil)
+	size_request_visible(&b, 1)
+	generation := b.size_generation
+	// Changing tabs must not cancel a request that is still being processed.
+	testing.expect(t, tab_open(&b, root) == nil)
+	size_request_visible(&b, 1)
+	testing.expect_value(t, b.size_generation, generation)
+	size_test_wait(t, &b, tree, 4)
+	testing.expect(t, os.write_entire_file(file, "changed") == nil)
+	cached := b.sizes[tree]
+	running := true
+	for _ in 0 ..< 4 {
+		testing.expect(t, tab_open(&b, root) == nil)
+		size_request_visible(&b, 1)
+		testing.expect(t, tab_close(&b, b.active_tab, &running) == nil)
+		size_request_visible(&b, 1)
+	}
+	testing.expect_value(t, b.size_generation, generation)
+	testing.expect_value(t, b.sizes[tree].refresh_after, cached.refresh_after)
+	testing.expect_value(t, b.sizes[tree].bytes, i64(4))
+	// Expire the cached total without a five-second test sleep. A descendant
+	// change must be found even though the top-level folder did not change.
+	cached.refresh_after = 0
+	b.sizes[tree] = cached
+	// An ordinary frame must not start periodic filesystem work.
+	size_request_visible(&b, 1)
+	testing.expect_value(t, b.sizes[tree].refresh_after, u64(0))
+	testing.expect(t, tab_open(&b, root) == nil)
+	size_request_visible(&b, 1)
+	size_request_visible(&b, 1)
+	size_test_wait(t, &b, tree, 7)
+}
+
 @(test)
 directory_sizes_keep_cached_totals_on_reopen_and_reject_old_results :: proc(t: ^testing.T) {
 	if !testing.expect(t, sdl.Init({.EVENTS})) {return}
@@ -63,18 +125,7 @@ directory_sizes_keep_cached_totals_on_reopen_and_reject_old_results :: proc(t: ^
 	testing.expect_value(t, cached.bytes, i64(4))
 	size_request_visible(&b, 1)
 	testing.expect_value(t, b.sizes[fmt.tprintf("%s/0", root)].state, Size_State.Known)
-	deadline = time.tick_now()
-	refreshed := false
-	for time.tick_since(deadline) < 5 * time.Second {
-		_ = size_poll(&b)
-		if entry, ok := b.sizes[fmt.tprintf("%s/0", root)];
-		   ok && entry.state == .Known && entry.request == b.size_generation && entry.bytes == 7 {
-			refreshed = true
-			break
-		}
-		time.sleep(time.Millisecond)
-	}
-	testing.expect(t, refreshed, "directory size did not refresh")
+	size_test_wait(t, &b, fmt.tprintf("%s/0", root), 7)
 	// A folder removed after listing must finish as unavailable, not stay pending.
 	missing := fmt.tprintf("%s/3", root)
 	testing.expect(t, os.remove_all(missing) == nil)
@@ -321,14 +372,7 @@ directory_size_split_totals_cancel_and_close_descriptors :: proc(t: ^testing.T) 
 	)
 	size_request_visible(&b, 1)
 	testing.expect_value(t, b.sizes[fmt.tprintf("%s/large/0", root)].bytes, i64(248))
-	deadline = time.tick_now()
-	refreshed := false
-	for time.tick_since(deadline) < 5 * time.Second {
-		_ = size_poll(&b)
-		if b.sizes[fmt.tprintf("%s/large/0", root)].bytes == 257 {refreshed = true; break}
-		time.sleep(time.Millisecond)
-	}
-	testing.expect(t, refreshed, "child cache did not refresh after navigation")
+	size_test_wait(t, &b, fmt.tprintf("%s/large/0", root), 257)
 	for _ in 0 ..< 12 {
 		size_cache_clear(&b)
 		size_request_visible(&b, 1)

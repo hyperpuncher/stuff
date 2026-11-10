@@ -8,7 +8,8 @@ Auto_Scroll :: struct {
 	active, places:  bool,
 	x, y:            f32,
 	rate, remainder: f64,
-	tick:            u64,
+	tick, pressed:   u64,
+	folder:          int, // Entry index plus one; zero means no short-click target.
 }
 
 autoscroll_begin :: proc(b: ^Browser, g: Geometry, x, y: f32) -> bool {
@@ -19,8 +20,7 @@ autoscroll_begin :: proc(b: ^Browser, g: Geometry, x, y: f32) -> bool {
 	   x < 0 ||
 	   x >= g.width ||
 	   y < view.list_top ||
-	   y >= list_bottom(view) ||
-	   scrollbar_for(b, g, places).max_first <= 0 {return false}
+	   y >= list_bottom(view) {return false}
 	file_drag_cancel_press(b)
 	b.drag = {}
 	b.places.focused = places
@@ -33,11 +33,20 @@ autoscroll_begin :: proc(b: ^Browser, g: Geometry, x, y: f32) -> bool {
 		y      = y,
 		tick   = sdl.GetTicks(),
 	}
-	return true
+	b.autoscroll.pressed = b.autoscroll.tick
+	b.autoscroll.active = scrollbar_for(b, g, places).max_first > 0
+	if !places && b.path != TRASH_PATH {
+		if row := row_at(g, y, b.first, len(b.visible)); row >= 0 {
+			source := b.visible[row]
+			if entry_is_directory(b.entries[source]) {b.autoscroll.folder = source + 1}
+		}
+	}
+	return b.autoscroll.active || b.autoscroll.folder > 0
 }
 
-autoscroll_motion :: proc(b: ^Browser, g: Geometry, y: f32) {
+autoscroll_motion :: proc(b: ^Browser, g: Geometry, x, y: f32) {
 	a := &b.autoscroll
+	if max(abs(x - a.x), abs(y - a.y)) >= 6 * g.scale {a.folder = 0}
 	delta := (y - a.y) / g.scale
 	distance := max(abs(delta) - 12, 0)
 	rate := f64(min(distance * distance / 800, 120))

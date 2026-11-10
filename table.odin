@@ -10,10 +10,11 @@ MIN_WINDOW_WIDTH :: SIDEBAR_WIDTH + 480
 MIN_WINDOW_HEIGHT :: 240
 
 Geometry :: struct {
-	width, height, scale, header, footer, row, list_top: f32,
-	padding, gap, sidebar, list_padding, font_size:      f32,
-	columns:                                             [Column]f32,
-	rows:                                                int,
+	width, height, scale, tabs, header, footer, row, list_top: f32,
+	padding, gap, sidebar, list_padding, font_size:            f32,
+	columns:                                                   [Column]f32,
+	row_gap:                                                   f32,
+	rows:                                                      int,
 }
 
 geometry :: proc(
@@ -21,6 +22,7 @@ geometry :: proc(
 	scale: f32,
 	font_size: f32 = 14,
 	font_height: f32 = 0,
+	tab_count: int = 1,
 ) -> Geometry {
 	g := Geometry {
 		width        = f32(width),
@@ -29,12 +31,15 @@ geometry :: proc(
 		header       = max(36, font_height + 12) * scale,
 		footer       = max(40, font_height + 12) * scale,
 		row          = max(30, font_height + 8) * scale,
+		row_gap      = 2 * f32(u16(1.5 * scale)),
 		font_size    = font_size * scale,
 		padding      = 16 * scale,
 		gap          = 24 * scale,
 		sidebar      = SIDEBAR_WIDTH * scale,
 		list_padding = 4 * scale,
 	}
+	if tab_count > 1 {g.tabs = g.row + 2 * g.row_gap}
+	g.header += g.tabs
 	g.list_top = g.header + g.row + g.list_padding
 	g.columns[.Size] = 112 * scale
 	g.columns[.Modified] = 184 * scale
@@ -176,8 +181,8 @@ table_row :: proc(b: ^Browser, index: int, g: Geometry, p: ^Painter) {
 			padding = {
 				left = inset,
 				right = right_inset,
-				top = u16(1.5 * g.scale),
-				bottom = u16(1.5 * g.scale),
+				top = u16(g.row_gap / 2),
+				bottom = u16(g.row_gap / 2),
 			},
 		},
 	},
@@ -243,6 +248,7 @@ layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.Ren
 		backgroundColor = theme.panel,
 	},
 	) {
+		tabs_layout(b, g, p)
 		header_layout(b, g, p)
 		if clay.UI()({layout = {sizing = {clay.SizingGrow(), clay.SizingGrow()}}}) {
 			places_layout(b, places_geometry(g), p)

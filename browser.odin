@@ -19,27 +19,36 @@ History_Entry :: struct {
 	first:               int,
 }
 
-// Entries, path, and history strings are owned. visible contains indices into entries.
+// Each view owns its listing, selection, search, and navigation history.
+Folder_View :: struct {
+	path:                    string,
+	entries:                 []os.File_Info,
+	visible:                 [dynamic]int,
+	selected, first, anchor: int,
+	marks:                   map[int]bool,
+	marked_bytes:            i64,
+	show_hidden:             bool,
+	search:                  string,
+	sort_column:             Column,
+	descending:              bool,
+	back, forward:           [dynamic]History_Entry,
+	space:                   Space_Info,
+	space_device:            linux.Dev,
+	trash_records:           map[string]File_Change,
+}
+
 Browser :: struct {
-	path:                   string,
-	entries:                []os.File_Info,
-	visible:                [dynamic]int,
-	selected, first:        int,
-	anchor:                 int,
-	marks:                  map[int]bool,
-	marked_bytes:           i64,
-	show_hidden:            bool,
+	using view:             Folder_View,
+	// The active slot is empty. Its owned view lives in view instead.
+	tabs:                   [dynamic]Folder_View,
+	active_tab:             int,
 	file_drag:              ^File_Drag,
-	search:                 string, // Owned filename query; kept while focus is on the results.
-	sort_column:            Column,
-	descending:             bool,
 	sizes:                  map[string]Size_Entry,
 	size_service:           ^Size_Service,
 	size_generation:        u64,
 	size_clock:             u64,
 	sorts:                  map[string]Sort_Spec, // Owned per-folder sort choices.
 	sorts_path:             string, // Borrowed state file path; empty disables saving.
-	back, forward:          [dynamic]History_Entry,
 	opens:                  [dynamic]File_Open,
 	status_error:           string,
 	places:                 Places,
@@ -47,8 +56,6 @@ Browser :: struct {
 	pointer:                Pointer,
 	hovered:                u32,
 	storage:                ^Storage,
-	space:                  Space_Info,
-	space_device:           linux.Dev,
 	pending_disk:           ^Disk_Operation, // Borrowed until the worker returns its result.
 	drag:                   Scroll_Drag,
 	autoscroll:             Auto_Scroll,
@@ -57,7 +64,6 @@ Browser :: struct {
 	undo_files, redo_files: [dynamic]File_Batch,
 	pending_trash:          ^File_Operation,
 	trash_requested:        bool,
-	trash_records:          map[string]File_Change,
 }
 
 browser_message :: proc(b: ^Browser, message: string) {
@@ -77,26 +83,26 @@ browser_destroy :: proc(b: ^Browser) {
 	delete(b.status_error)
 	places_destroy(&b.places)
 	file_open_destroy(b)
-	os.file_info_slice_delete(b.entries, context.allocator)
-	trash_records_destroy(b.trash_records)
-	delete(b.visible)
-	delete(b.marks)
+	view_destroy(&b.view)
+	for &view in b.tabs {view_destroy(&view)}
+	delete(b.tabs)
 	size_cache_destroy(b)
 	sort_state_destroy(b.sorts)
-	delete(b.path)
-	delete(b.search)
-	for entry in b.back {history_entry_destroy(entry)}
-	for entry in b.forward {history_entry_destroy(entry)}
-	delete(b.back)
-	delete(b.forward)
 }
 
 browser_load :: proc(b: ^Browser, path: string) -> os.Error {
+	browser_read(b, path) or_return
+	size_cancel(b)
+	return nil
+}
+
+// Reading a listing does not restart size scans. Navigation requests a refresh
+// through browser_load; tab activation only needs the updated listing.
+browser_read :: proc(b: ^Browser, path: string) -> os.Error {
 	b.autoscroll = {}
 	if path == TRASH_PATH {
 		if !trash_view_request(b) {return .Unsupported}
 		if b.path == TRASH_PATH {browser_message(b, ""); return nil}
-		size_cancel(b)
 		search_reset(b)
 		os.file_info_slice_delete(b.entries, context.allocator)
 		trash_records_destroy(b.trash_records)
@@ -113,7 +119,6 @@ browser_load :: proc(b: ^Browser, path: string) -> os.Error {
 	defer os.close(dir)
 	entries := os.read_all_directory(dir, context.allocator) or_return
 	absolute := strings.clone(os.name(dir))
-	size_cancel(b)
 	if b.path != absolute {search_reset(b); b.header.copied_until = 0; b.drag = {}}
 	// Keep free space visible during navigation within the same filesystem.
 	info: linux.Stat
@@ -308,9 +313,7 @@ browser_parent :: proc(b: ^Browser) -> os.Error {
 	return browser_navigate(b, parent)
 }
 
-browser_enter :: proc(b: ^Browser) -> os.Error {
-	if len(b.visible) == 0 {return nil}
-	entry := b.entries[b.visible[b.selected]]
+entry_is_directory :: proc(entry: os.File_Info) -> bool {
 	is_directory := entry.type == .Directory
 	if entry.type == .Symlink {
 		path := strings.clone_to_cstring(entry.fullpath, context.temp_allocator)
@@ -318,6 +321,13 @@ browser_enter :: proc(b: ^Browser) -> os.Error {
 		is_directory =
 			linux.stat(path, &info) == .NONE && info.mode & linux.S_IFMT == linux.S_IFDIR
 	}
+	return is_directory
+}
+
+browser_enter :: proc(b: ^Browser) -> os.Error {
+	if len(b.visible) == 0 {return nil}
+	entry := b.entries[b.visible[b.selected]]
+	is_directory := entry_is_directory(entry)
 	if b.path == TRASH_PATH && is_directory {
 		browser_message(b, "restore this folder to browse it")
 		return nil

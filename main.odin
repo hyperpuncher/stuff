@@ -13,13 +13,23 @@ import ttf "vendor:sdl3/ttf"
 
 handle_event :: proc(b: ^Browser, event: ^sdl.Event, g: Geometry, running: ^bool) -> bool {
 	autoscroll_stopped := false
-	if b.autoscroll.active {
+	if b.autoscroll.active || b.autoscroll.folder > 0 {
 		#partial switch event.type {
 		case .MOUSE_MOTION:
-			autoscroll_motion(b, g, event.motion.y)
+			autoscroll_motion(b, g, event.motion.x, event.motion.y)
 			return false
 		case .MOUSE_BUTTON_UP:
-			if event.button.button == sdl.BUTTON_MIDDLE {b.autoscroll = {}; return true}
+			if event.button.button == sdl.BUTTON_MIDDLE {
+				click := b.autoscroll
+				b.autoscroll = {}
+				if click.folder > 0 && sdl.GetTicks() - click.pressed < 250 {
+					if err := tab_open(b, b.entries[click.folder - 1].fullpath, activate = false);
+					   err != nil {
+						browser_message(b, fmt.tprintf("cannot read folder: %v", err))
+					}
+				}
+				return true
+			}
 			return false
 		case .KEY_DOWN,
 		     .MOUSE_BUTTON_DOWN,
@@ -101,6 +111,7 @@ handle_input :: proc(
 	changed: bool,
 	err: os.Error,
 ) {
+	if handled, tab_err := tabs_input(b, event, g, running); handled {return true, tab_err}
 	if handled, edit_err := path_edit_input(b, event, g); handled {return true, edit_err}
 	if menu_input(b, event, g) {return true, nil}
 	#partial switch event.type {
@@ -449,6 +460,7 @@ run :: proc() -> int {
 				scale,
 				font_points * (96.0 / 72.0),
 				f32(ttf.GetFontHeight(font)) / scale,
+				tab_count(&b),
 			)
 			commands := layout(&b, g, &painter)
 			if hover_update(&b, g) {commands = layout(&b, g, &painter)}

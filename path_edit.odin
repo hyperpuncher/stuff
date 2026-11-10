@@ -71,10 +71,15 @@ path_edit_box :: proc(g: Geometry, mode: Edit_Mode = .Path) -> clay.BoundingBox 
 			box.x + 8 * g.scale,
 			box.y + 8 * g.scale,
 			box.width - 16 * g.scale,
-			g.header - 8 * g.scale,
+			g.header - g.tabs - 8 * g.scale,
 		}
 	}
-	return {4 * g.scale, 4 * g.scale, g.width - 8 * g.scale, g.header - 8 * g.scale}
+	return {
+		4 * g.scale,
+		g.tabs + 4 * g.scale,
+		g.width - 8 * g.scale,
+		g.header - g.tabs - 8 * g.scale,
+	}
 }
 
 path_edit_single_line :: proc(b: ^Browser, value: string) -> bool {
@@ -412,7 +417,9 @@ path_edit_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 		layout = {
 			sizing = {
 				clay.SizingGrow(),
-				clay.SizingFixed(edit_is_dialog(edit.mode) ? g.header - 8 * g.scale : g.header),
+				clay.SizingFixed(
+					g.header - g.tabs - (edit_is_dialog(edit.mode) ? 8 * g.scale : 0),
+				),
 			},
 			padding = clay.PaddingAll(edit_is_dialog(edit.mode) ? 0 : u16(4 * g.scale)),
 		},
