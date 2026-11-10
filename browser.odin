@@ -8,6 +8,7 @@ import "core:sync"
 import linux "core:sys/linux"
 import "core:time"
 import "core:unicode/utf8"
+import sdl "vendor:sdl3"
 
 Column :: enum {
 	Name,
@@ -52,6 +53,7 @@ Browser :: struct {
 	sorts_path:             string, // Borrowed state file path; empty disables saving.
 	opens:                  [dynamic]File_Open,
 	status_error:           string,
+	status_until:           u64,
 	places:                 Places,
 	header:                 Header,
 	pointer:                Pointer,
@@ -71,6 +73,13 @@ Browser :: struct {
 browser_message :: proc(b: ^Browser, message: string) {
 	delete(b.status_error)
 	b.status_error = strings.clone(message)
+	b.status_until = message != "" ? sdl.GetTicks() + 3000 : 0
+}
+
+browser_message_update :: proc(b: ^Browser, now: u64) -> bool {
+	if b.status_until == 0 || now < b.status_until {return false}
+	browser_message(b, "")
+	return true
 }
 
 browser_destroy :: proc(b: ^Browser) {

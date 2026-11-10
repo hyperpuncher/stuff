@@ -288,8 +288,9 @@ ui_wait_timeout :: proc(b: ^Browser, now: u64) -> i32 {
 	timeout := i32(-1)
 	if len(b.opens) > 0 {timeout = 100}
 	if b.autoscroll.active && b.autoscroll.rate != 0 {timeout = 16}
-	if b.header.copied_until != 0 {
-		remaining := b.header.copied_until > now ? i32(b.header.copied_until - now) : 0
+	for deadline in ([2]u64{b.header.copied_until, b.status_until}) {
+		if deadline == 0 {continue}
+		remaining := deadline > now ? i32(deadline - now) : 0
 		timeout = timeout < 0 ? remaining : min(timeout, remaining)
 	}
 	return timeout
@@ -422,6 +423,7 @@ run :: proc() -> int {
 		dirty = autoscroll_update(&b, g, sdl.GetTicks()) || dirty
 		dirty = file_open_poll(&b) || dirty
 		dirty = header_update(&b.header, sdl.GetTicks()) || dirty
+		dirty = browser_message_update(&b, sdl.GetTicks()) || dirty
 		if dirty {
 			width, height: c.int
 			scale := sdl.GetWindowDisplayScale(window)

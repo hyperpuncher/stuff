@@ -9,6 +9,35 @@ import "core:time"
 import sdl "vendor:sdl3"
 
 @(test)
+footer_messages_expire_without_clearing_newer_messages :: proc(t: ^testing.T) {
+	if !sdl.Init({.EVENTS}) {testing.fail_now(t, string(sdl.GetError()))}
+	defer sdl.Quit()
+	b: Browser
+	defer browser_destroy(&b)
+	before := sdl.GetTicks()
+	browser_message(&b, "operation cancelled")
+	testing.expect(t, b.status_until >= before + 3000 && b.status_until <= sdl.GetTicks() + 3000)
+	// A new message must outlive the previous message's deadline.
+	b.status_until -= 1000
+	old_deadline := b.status_until
+	browser_message(&b, "cannot open file")
+	testing.expect(t, !browser_message_update(&b, old_deadline))
+	testing.expect_value(t, b.status_error, "cannot open file")
+	deadline := b.status_until
+	b.header.copied_until = deadline - 100
+	testing.expect_value(t, ui_wait_timeout(&b, deadline - 101), i32(1))
+	testing.expect(t, header_update(&b.header, deadline - 100))
+	testing.expect(t, !browser_message_update(&b, deadline - 1))
+	testing.expect_value(t, ui_wait_timeout(&b, deadline - 1), i32(1))
+	testing.expect(t, browser_message_update(&b, deadline))
+	testing.expect_value(t, b.status_error, "")
+	testing.expect_value(t, ui_wait_timeout(&b, deadline), i32(-1))
+	browser_message(&b, "temporary message")
+	browser_message(&b, "")
+	testing.expect_value(t, ui_wait_timeout(&b, sdl.GetTicks()), i32(-1))
+}
+
+@(test)
 browse_real_directory :: proc(t: ^testing.T) {
 	testing.set_fail_timeout(t, 3 * time.Second)
 	root, err := os.make_directory_temp("/tmp", "stuff-test-", context.allocator)
