@@ -239,7 +239,7 @@ tabs_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 					backgroundColor = hover_color(b, close, {}),
 					cornerRadius = clay.CornerRadiusAll(6 * g.scale),
 				},
-				) {label("×", theme.muted, g.font_size)}
+				) {icon_element(p, .Close, g.scale)}
 			}
 		}
 		if clay.UI()({layout = {sizing = {clay.SizingGrow(), clay.SizingGrow()}}}) {}
@@ -253,6 +253,9 @@ tabs_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 			backgroundColor = hover_color(b, id, {}),
 			cornerRadius = clay.CornerRadiusAll(6 * g.scale),
 		},
-		) {label("+", theme.muted, g.font_size)}
+		) {
+			@(static) rotation: f64 = 45
+			icon_element(p, .Close, g.scale, &rotation)
+		}
 	}
 }

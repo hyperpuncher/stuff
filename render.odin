@@ -42,6 +42,7 @@ Icon :: enum {
 	Trash,
 	SelectAll,
 	Check,
+	Close,
 	ChevronRight,
 	SortAscending,
 	SortDescending,
@@ -78,6 +79,7 @@ ICON_SOURCES :: [Icon]string {
 	.Trash           = #load("vendor/lucide/trash.svg"),
 	.SelectAll       = #load("vendor/lucide/list-checks.svg"),
 	.Check           = #load("vendor/lucide/check.svg"),
+	.Close           = #load("vendor/lucide/x.svg"),
 	.ChevronRight    = #load("vendor/lucide/chevron-right.svg"),
 	.SortAscending   = #load("vendor/lucide/chevron-up.svg"),
 	.SortDescending  = #load("vendor/lucide/chevron-down.svg"),
@@ -506,14 +508,13 @@ paint :: proc(p: ^Painter, commands: clay.ClayArray(clay.RenderCommand), width, 
 			sdl_check(sdl.RenderFillRect(p.renderer, &r))
 		case .Image:
 			r := sdl.FRect{math.round(b.x), math.round(b.y), b.width, b.height}
-			sdl_check(
-				sdl.RenderTexture(
-					p.renderer,
-					cast(^sdl.Texture)cmd.renderData.image.imageData,
-					nil,
-					&r,
-				),
-			)
+			texture := cast(^sdl.Texture)cmd.renderData.image.imageData
+			if cmd.userData != nil {
+				angle := cast(^f64)cmd.userData
+				sdl_check(
+					sdl.RenderTextureRotated(p.renderer, texture, nil, &r, angle^, nil, .NONE),
+				)
+			} else {sdl_check(sdl.RenderTexture(p.renderer, texture, nil, &r))}
 		case .Text:
 			data := cmd.renderData.text
 			value := string(data.stringContents.chars[:data.stringContents.length])

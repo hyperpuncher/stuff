@@ -106,14 +106,16 @@ label :: proc(value: string, color: clay.Color, font_size: f32) {
 	clay.Text(value, {textColor = color, fontSize = u16(font_size), wrapMode = .None})
 }
 
-icon_size :: proc(kind: Icon) -> f32 {return kind == .Unmount ? 12 : 18}
+icon_size :: proc(kind: Icon) -> f32 {return kind == .Unmount || kind == .Close ? 12 : 18}
 
-icon_element :: proc(p: ^Painter, kind: Icon, scale: f32) {
+// A supplied rotation angle must outlive the layout's render commands.
+icon_element :: proc(p: ^Painter, kind: Icon, scale: f32, rotation: ^f64 = nil) {
 	size := icon_size(kind) * scale
 	if clay.UI()(
 	{
 		layout = {sizing = {clay.SizingFixed(size), clay.SizingFixed(size)}},
 		image = {imageData = p.icons[kind]},
+		userData = rotation,
 	},
 	) {}
 }
