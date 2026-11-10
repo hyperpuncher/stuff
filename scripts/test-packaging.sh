@@ -2,7 +2,9 @@
 set -euo pipefail
 archives=${1:-build/release}
 out="$PWD/build/package-tests"
-bash scripts/prepare-aur.sh 0.0.0 "$archives" "$out"
+checksum_x86_64=$(sha256sum "$archives/stuff-linux-x64.tar.zst")
+checksum_aarch64=$(sha256sum "$archives/stuff-linux-arm64.tar.zst")
+bash scripts/prepare-aur.sh 0.0.0 "${checksum_x86_64%% *}" "${checksum_aarch64%% *}" "$out"
 
 # use the local archive; never download an unpublished test release.
 cp "$archives/stuff-linux-x64.tar.zst" "$out/stuff-bin/stuff-bin-0.0.0-linux-x64.tar.zst"

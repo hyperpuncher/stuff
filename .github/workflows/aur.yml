@@ -40,20 +40,15 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-          ref: ${{ inputs.tag }}
-      - name: download release archives
-        run: |
-          mkdir -p build/release
-          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir build/release
-          (cd build/release && sha256sum --check SHA256SUMS)
       - name: prepare package recipes
-        env:
-          TAG: ${{ inputs.tag }}
         run: |
+          digests=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" \
+            --jq '.assets | INDEX(.name) | [."stuff-linux-x64.tar.zst".digest, ."stuff-linux-arm64.tar.zst".digest] | map(ltrimstr("sha256:")) | @tsv')
+          read -r checksum_x86_64 checksum_aarch64 <<< "$digests"
           useradd --create-home builder
           mkdir -p build/aur
           chown -R builder:builder build/aur
-          runuser -u builder -- bash scripts/prepare-aur.sh "${TAG#v}" build/release build/aur
+          runuser -u builder -- bash scripts/prepare-aur.sh "${RELEASE_TAG#v}" "$checksum_x86_64" "$checksum_aarch64" build/aur
       - name: publish AUR packages
         env:
           AUR_KEY: ${{ secrets.AUR_KEY }}

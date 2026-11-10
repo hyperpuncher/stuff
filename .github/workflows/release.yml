@@ -21,6 +21,8 @@ jobs:
     permissions:
       contents: write
       actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -31,17 +33,12 @@ jobs:
           pattern: stuff-*
           path: build/release
           merge-multiple: true
-      - name: checksum archives
-        run: (cd build/release && sha256sum stuff-linux-*.tar.zst > SHA256SUMS)
       - uses: hyperpuncher/release-notes@v1
         id: notes
-      - uses: softprops/action-gh-release@v3
-        with:
-          body_path: ${{ steps.notes.outputs.path }}
-          files: |
-            build/release/stuff-linux-*.tar.zst
-            build/release/SHA256SUMS
-          fail_on_unmatched_files: true
+      - name: publish release
+        env:
+          NOTES: ${{ steps.notes.outputs.path }}
+        run: gh release create "$GITHUB_REF_NAME" build/release/stuff-linux-*.tar.zst --repo "$GITHUB_REPOSITORY" --verify-tag --title "$GITHUB_REF_NAME" --notes-file "$NOTES"
 
   aur:
     needs: release

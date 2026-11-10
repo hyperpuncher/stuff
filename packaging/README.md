@@ -1,6 +1,6 @@
 # releases and AUR
 
-stable `vX.Y.Z` tags build Linux x86-64 and arm64 archives and a `SHA256SUMS` file. release notes come from `hyperpuncher/release-notes@v1`.
+stable `vX.Y.Z` tags build Linux x86-64 and arm64 archives. release notes come from `hyperpuncher/release-notes@v1`. AUR recipes use GitHub's asset digests.
 
 both architectures run checks, tests, and a private headless Wayland drag test on native runners. an Arch container also builds and checks both AUR recipes on x86-64 before publication.
 
@@ -15,10 +15,9 @@ add the `AUR_KEY` repository secret. use an SSH private key without a passphrase
 ```sh
 just check-packaging
 just bundle
-bash scripts/prepare-aur.sh 0.1.0 build/release build/aur
 just test-packaging
 ```
 
-recipe generation needs both release archives, Arch's `makepkg`, and a non-root user. package tests also need the runtime and build dependencies, `namcap`, and a monospace font.
+package tests need both release archives, Arch's `makepkg`, a non-root user, runtime and build dependencies, `namcap`, and a monospace font.
 
 these commands do not publish anything. pushing a release tag starts publication. if the AUR job fails, retry the existing release with `gh workflow run aur.yml -f tag=vX.Y.Z`. this does not rebuild assets or move the tag.
