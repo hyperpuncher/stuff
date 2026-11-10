@@ -48,6 +48,7 @@ Browser :: struct {
 	hovered:                u32,
 	storage:                ^Storage,
 	space:                  Space_Info,
+	space_device:           linux.Dev,
 	pending_disk:           ^Disk_Operation, // Borrowed until the worker returns its result.
 	drag:                   Scroll_Drag,
 	menu:                   Context_Menu,
@@ -111,7 +112,12 @@ browser_load :: proc(b: ^Browser, path: string) -> os.Error {
 	entries := os.read_all_directory(dir, context.allocator) or_return
 	absolute := strings.clone(os.name(dir))
 	size_cancel(b)
-	if b.path != absolute {search_reset(b); b.header.copied_until = 0; b.space = {}; b.drag = {}}
+	if b.path != absolute {search_reset(b); b.header.copied_until = 0; b.drag = {}}
+	// Keep free space visible during navigation within the same filesystem.
+	info: linux.Stat
+	if linux.fstat(linux.Fd(os.fd(dir)), &info) != .NONE ||
+	   info.dev != b.space_device {b.space = {}}
+	b.space_device = info.dev
 	b.menu.active = false
 	os.file_info_slice_delete(b.entries, context.allocator)
 	delete(b.path)

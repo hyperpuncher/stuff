@@ -113,17 +113,18 @@ storage_results_do_not_replace_later_navigation :: proc(t: ^testing.T) {
 		total     = 456,
 		valid     = true,
 	}
-	testing.expect(t, !storage_apply(&b, {kind = .Space, path = elsewhere, space = space}))
-	testing.expect(t, !b.space.valid)
 	testing.expect(t, storage_apply(&b, {kind = .Space, path = root, space = space}))
-	testing.expect_value(t, b.space, space)
 	op := new(Disk_Operation)
 	defer disk_operation_destroy(op)
 	op.device, op.origin, op.mountpoint =
 		strings.clone("/dev/fixture"), strings.clone(root), strings.clone(mounted)
 	b.pending_disk = op
 	testing.expect(t, browser_navigate(&b, elsewhere) == nil)
-	testing.expect(t, !b.space.valid)
+	// Keep the footer value while the same filesystem is refreshed.
+	testing.expect_value(t, b.space, space)
+	// An old folder's result must not clear the retained footer value.
+	testing.expect(t, !storage_apply(&b, {kind = .Space, path = root}))
+	testing.expect_value(t, b.space, space)
 	testing.expect(t, storage_apply(&b, {kind = .Operation, op = op}))
 	testing.expect_value(t, b.path, elsewhere)
 	testing.expect(t, b.pending_disk == nil)
@@ -134,6 +135,9 @@ storage_results_do_not_replace_later_navigation :: proc(t: ^testing.T) {
 	testing.expect(t, storage_apply(&b, {kind = .Operation, op = op}))
 	testing.expect_value(t, b.path, elsewhere)
 	testing.expect(t, strings.contains(b.status_error, "volume is busy"))
+	// Do not carry the previous filesystem's value into another filesystem.
+	testing.expect(t, browser_navigate(&b, "/proc") == nil)
+	testing.expect(t, !b.space.valid)
 }
 
 verify_disk_usage_layout :: proc(t: ^testing.T, p: ^Painter) {
