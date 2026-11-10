@@ -151,6 +151,11 @@ file_operation_apply :: proc(b: ^Browser, op: ^File_Operation) -> bool {
 	if b.pending_files != op {return false}
 	b.pending_files = nil
 	if op.kind == .Open_With {if op.error != "" {browser_message(b, op.error)}; return true}
+	if op.kind == .Empty_Trash {size_cache_clear(b)} else {
+		size_cancel(b)
+		size_cache_invalidate(b, op.target, descendants = false)
+		size_cache_invalidate(b, op.destination)
+	}
 	renamed_target := ""
 	if op.kind == .Rename && len(b.visible) > 0 {
 		changes := op.history == .Record ? op.changes : op.applied
@@ -163,6 +168,8 @@ file_operation_apply :: proc(b: ^Browser, op: ^File_Operation) -> bool {
 	refresh := b.path == op.target
 	for changes in ([?][dynamic]File_Change{op.changes, op.applied}) {
 		for change in changes {
+			size_cache_invalidate(b, change.path)
+			size_cache_invalidate(b, change.alternate)
 			parent, _ := os.split_path(change.path)
 			if strings.trim_suffix(parent, "/") ==
 			   strings.trim_suffix(b.path, "/") {refresh = true}

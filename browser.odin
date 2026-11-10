@@ -31,9 +31,12 @@ Browser :: struct {
 	show_hidden:            bool,
 	file_drag:              ^File_Drag,
 	search:                 string, // Owned filename query; kept while focus is on the results.
-	visible_bytes:          i64,
 	sort_column:            Column,
 	descending:             bool,
+	sizes:                  map[string]Size_Entry,
+	size_service:           ^Size_Service,
+	size_generation:        u64,
+	size_clock:             u64,
 	sorts:                  map[string]Sort_Spec, // Owned per-folder sort choices.
 	sorts_path:             string, // Borrowed state file path; empty disables saving.
 	back, forward:          [dynamic]History_Entry,
@@ -61,6 +64,7 @@ browser_message :: proc(b: ^Browser, message: string) {
 }
 
 browser_destroy :: proc(b: ^Browser) {
+	size_destroy(b.size_service)
 	file_operation_stop(b.pending_files)
 	file_operation_stop(b.pending_trash)
 	storage_destroy(b.storage)
@@ -75,6 +79,7 @@ browser_destroy :: proc(b: ^Browser) {
 	trash_records_destroy(b.trash_records)
 	delete(b.visible)
 	delete(b.marks)
+	size_cache_destroy(b)
 	sort_state_destroy(b.sorts)
 	delete(b.path)
 	delete(b.search)
@@ -88,6 +93,7 @@ browser_load :: proc(b: ^Browser, path: string) -> os.Error {
 	if path == TRASH_PATH {
 		if !trash_view_request(b) {return .Unsupported}
 		if b.path == TRASH_PATH {browser_message(b, ""); return nil}
+		size_cancel(b)
 		search_reset(b)
 		os.file_info_slice_delete(b.entries, context.allocator)
 		trash_records_destroy(b.trash_records)
@@ -104,6 +110,7 @@ browser_load :: proc(b: ^Browser, path: string) -> os.Error {
 	defer os.close(dir)
 	entries := os.read_all_directory(dir, context.allocator) or_return
 	absolute := strings.clone(os.name(dir))
+	size_cancel(b)
 	if b.path != absolute {search_reset(b); b.header.copied_until = 0; b.space = {}; b.drag = {}}
 	b.menu.active = false
 	os.file_info_slice_delete(b.entries, context.allocator)
@@ -121,12 +128,10 @@ browser_load :: proc(b: ^Browser, path: string) -> os.Error {
 browser_filter :: proc(b: ^Browser, reset_selection := true) {
 	query_runes := utf8.rune_count_in_string(b.search)
 	clear(&b.visible)
-	b.visible_bytes = 0
 	for entry, i in b.entries {
 		if b.path != TRASH_PATH && !b.show_hidden && strings.has_prefix(entry.name, ".") {continue}
 		if !search_matches(entry.name, b.search, query_runes) {continue}
 		append(&b.visible, i)
-		if entry.type == .Regular {b.visible_bytes += max(0, entry.size)}
 	}
 	browser_sort(b)
 	if reset_selection {selection_single(b, 0); b.first = 0}
@@ -137,9 +142,7 @@ browser_sort :: proc(b: ^Browser) {
 	if b.selected >= 0 && b.selected < len(b.visible) {
 		selected_source = b.visible[b.selected]
 	}
-	slice.sort_by_with_data(
-		b.visible[:],
-		proc(i, j: int, data: rawptr) -> bool {
+	slice.sort_by_with_data(b.visible[:], proc(i, j: int, data: rawptr) -> bool {
 			b := cast(^Browser)data
 			a, z := b.entries[i], b.entries[j]
 			if (a.type == .Directory) != (z.type == .Directory) {return a.type == .Directory}
@@ -148,10 +151,7 @@ browser_sort :: proc(b: ^Browser) {
 			case .Name:
 				order = slice.cmp(a.name, z.name)
 			case .Size:
-				// Non-regular entries have no displayed size and sort before files.
-				a_size := a.type == .Regular ? max(0, a.size) : -1
-				z_size := z.type == .Regular ? max(0, z.size) : -1
-				order = slice.cmp(a_size, z_size)
+				order = slice.cmp(size_value(b, a), size_value(b, z))
 			case .Modified:
 				order = slice.cmp(
 					time.to_unix_nanoseconds(a.modification_time),
@@ -160,9 +160,7 @@ browser_sort :: proc(b: ^Browser) {
 			}
 			if order != .Equal {return (order == .Less) != b.descending}
 			return a.name < z.name
-		},
-		b,
-	)
+		}, b)
 	for source, i in b.visible {
 		if source == selected_source {b.selected = i; break}
 	}
@@ -195,12 +193,7 @@ format_size :: proc(bytes: i64) -> string {
 browser_summary :: proc(b: ^Browser) -> string {
 	noun := "items"
 	if len(b.visible) == 1 {noun = "item"}
-	total := fmt.tprintf(
-		"%d %s    %s in files",
-		len(b.visible),
-		noun,
-		format_size(b.visible_bytes),
-	)
+	total := fmt.tprintf("%d %s", len(b.visible), noun)
 	if len(b.visible) == 0 {return total}
 	if len(b.marks) != 1 {
 		return fmt.tprintf(

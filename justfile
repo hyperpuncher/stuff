@@ -31,6 +31,10 @@ check-arm:
 test: clay
 	SDL_VIDEODRIVER=dummy SDL_RENDER_DRIVER=software odin test . -out:build/stuff-tests -define:ODIN_TEST_THREADS=1
 
+# time directory size scans over an isolated 16,384-file fixture.
+bench-sizes: clay
+	SDL_VIDEODRIVER=dummy SDL_RENDER_DRIVER=software odin test . -o:speed -out:build/stuff-size-bench -define:ODIN_TEST_THREADS=1 -define:SIZE_BENCH=true -define:ODIN_TEST_NAMES=main.directory_size_benchmark
+
 # exercise real drag negotiation in a private headless Wayland compositor (labwc).
 test-drag: clay
 	odin test . -out:build/stuff-drag-tests -define:ODIN_TEST_THREADS=1 -define:NATIVE_WAYLAND_TESTS=true -define:ODIN_TEST_NAMES=main.native_wayland_file_drag

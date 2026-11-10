@@ -161,9 +161,6 @@ handle_input :: proc(
 			err = browser_enter(b)
 		case sdl.K_BACKSPACE:
 			err = browser_parent(b)
-		case sdl.K_F5:
-			err = browser_load(b, b.path)
-			storage_refresh(b.storage)
 		case sdl.K_H:
 			if event.key.mod & sdl.KMOD_CTRL != {} {
 				b.show_hidden = !b.show_hidden
@@ -309,6 +306,7 @@ run :: proc() -> int {
 	places_init(&b.places)
 	b.storage = storage_start(b.path)
 	if b.storage == nil {fmt.eprintln("cannot start the storage worker")}
+	if !smoke {b.size_service = size_start()}
 	active := places_active(&b.places, b.path)
 	if active >= 0 {b.places.selected = active}
 	if !ttf.Init() {fmt.eprintln(string(sdl.GetError())); return 1}
@@ -379,6 +377,7 @@ run :: proc() -> int {
 		dirty = file_manager_poll(manager, &b, window) || dirty
 		dirty = file_drag_poll(&b) || dirty
 		dirty = storage_poll(&b) || dirty
+		dirty = size_poll(&b) || dirty
 		dirty = file_open_poll(&b) || dirty
 		dirty = header_update(&b.header, sdl.GetTicks()) || dirty
 		if dirty {

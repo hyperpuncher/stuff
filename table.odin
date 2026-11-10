@@ -199,7 +199,17 @@ table_row :: proc(b: ^Browser, index: int, g: Geometry, p: ^Painter) {
 			}
 			if clay.UI()({layout = column_layout(g, .Size)}) {
 				value := "—"
-				if entry.type == .Regular {value = format_size(entry.size)}
+				if entry.type == .Regular {
+					value = format_size(entry.size)
+				} else if entry.type == .Directory &&
+				   b.size_service != nil &&
+				   b.path != TRASH_PATH {
+					if cached, ok := b.sizes[entry.fullpath]; ok && cached.state == .Known {
+						value = format_size(cached.bytes)
+					} else if !ok || cached.state == .Pending {
+						value = "…"
+					}
+				}
 				label(fit_label(p.font, value, g.columns[.Size]), theme.muted, g.font_size)
 			}
 			if clay.UI()({layout = column_layout(g, .Modified)}) {
@@ -224,6 +234,7 @@ layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.Ren
 		0,
 		max(0, len(b.places.entries) - places_geometry(g).rows),
 	)
+	size_request_visible(b, g.rows)
 	clay.SetLayoutDimensions({g.width, g.height})
 	clay.BeginLayout()
 	if clay.UI(clay.ID("window"))(

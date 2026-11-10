@@ -35,7 +35,6 @@ search_shortcuts_filter_unicode_names_and_preserve_pointer_targets :: proc(t: ^t
 	}
 	_ = handle_event(&b, &event, g, &running)
 	testing.expect_value(t, len(b.visible), 2)
-	testing.expect_value(t, b.visible_bytes, i64(3))
 	event = {
 		key = {type = .KEY_DOWN, key = sdl.K_Z, mod = sdl.KMOD_CTRL},
 	}

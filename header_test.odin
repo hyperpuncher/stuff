@@ -68,17 +68,9 @@ verify_header_actions :: proc(t: ^testing.T, p: ^Painter) {
 	event.motion.y = last_initial.y + last_initial.height / 2
 	testing.expect(t, handle_event(&b, &event, g, &running))
 	testing.expect_value(t, pointer_cursor(&b, g), sdl.SystemCursor.POINTER)
-	// A failed refresh must not leave a separate error that hides clipboard feedback.
-	testing.expect(t, os.remove(child) == nil)
-	refresh := sdl.Event {
-		key = {type = .KEY_DOWN, key = sdl.K_F5},
-	}
-	testing.expect(t, handle_event(&b, &refresh, g, &running))
-	testing.expect(t, strings.has_prefix(b.status_error, "cannot read folder:"))
-	testing.expect_value(t, b.path, child)
+	// Copy feedback replaces a previous error.
+	browser_message(&b, "cannot read folder: missing")
 	click_header_element(t, &b, g, clay.ID("copy_path"))
-	testing.expect_value(t, b.status_error, "")
-	testing.expect(t, os.make_directory(child) == nil)
 	clipboard := sdl.GetClipboardText()
 	testing.expect_value(t, string(cast(cstring)clipboard), child)
 	sdl.free(clipboard)

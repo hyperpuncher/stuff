@@ -29,13 +29,12 @@ browse_real_directory :: proc(t: ^testing.T) {
 	defer browser_destroy(&b)
 	testing.expect(t, browser_load(&b, root) == nil)
 	testing.expect_value(t, len(b.visible), 2)
-	testing.expect_value(t, b.visible_bytes, i64(5))
+	testing.expect_value(t, browser_summary(&b), "2 items    selected: folder")
 	testing.expect_value(t, b.entries[b.visible[0]].name, "alpha")
 	testing.expect_value(t, b.entries[b.visible[1]].name, "A-file")
 	b.show_hidden = true
 	browser_filter(&b)
 	testing.expect_value(t, len(b.visible), 3)
-	testing.expect_value(t, b.visible_bytes, i64(11))
 	testing.expect_value(t, b.selected, 0)
 	testing.expect(t, browser_enter(&b) == nil)
 	testing.expect_value(t, b.path, folder)
@@ -75,7 +74,6 @@ browse_real_directory :: proc(t: ^testing.T) {
 	testing.expect(t, handle_event(&b, &event, g, &running))
 	testing.expect_value(t, b.path, root)
 	testing.expect_value(t, len(b.visible), 2)
-	testing.expect_value(t, b.visible_bytes, i64(5))
 	// Special nodes must be rejected without waiting for a FIFO writer.
 	pipe := fmt.caprintf("%s/pipe", root)
 	defer delete(pipe)
