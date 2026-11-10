@@ -15,12 +15,14 @@ Storage_Result :: struct {
 		Space,
 		Operation,
 		Files,
+		Progress,
 	},
 	disks:       [dynamic]Disk,
 	path, error: string,
 	space:       Space_Info,
 	op:          ^Disk_Operation,
-	files:       ^File_Operation,
+	files:       ^File_Operation, // Borrowed for Progress; owned for Files.
+	progress:    File_Progress,
 }
 
 // Requests and results are owned. The mutex protects only shared queue/state
@@ -42,7 +44,7 @@ storage_result_destroy :: proc(result: Storage_Result) {
 	delete(result.path)
 	delete(result.error)
 	disk_operation_destroy(result.op)
-	file_operation_destroy(result.files)
+	if result.kind == .Files {file_operation_destroy(result.files)}
 }
 
 storage_wake :: proc(s: ^Storage) {
@@ -55,6 +57,16 @@ storage_wake :: proc(s: ^Storage) {
 
 storage_publish :: proc(s: ^Storage, result: Storage_Result) {
 	sync.mutex_lock(&s.mutex)
+	// Keep at most one pending snapshot per job, even if the UI is busy.
+	if result.kind == .Progress {
+		for &pending in s.results {
+			if pending.kind == .Progress && pending.files == result.files {
+				pending.progress = result.progress
+				sync.mutex_unlock(&s.mutex)
+				return
+			}
+		}
+	}
 	wake := len(s.results) == 0
 	append(&s.results, result)
 	sync.mutex_unlock(&s.mutex)

@@ -78,7 +78,7 @@ rename_and_new_folder_keep_conflicts_and_support_history :: proc(t: ^testing.T) 
 	testing.expect(t, b.header.edit.active && b.header.edit.mode == .New_Folder)
 	path_edit_replace(&b, "../outside")
 	file_dialog_submit(&b)
-	testing.expect(t, b.pending_files == nil && b.header.edit.active)
+	testing.expect(t, len(b.transfers) == 0 && b.header.edit.active)
 	b.header.edit.text.selection[1], b.header.edit.text.selection[0] =
 		0, len(strings.to_string(b.header.edit.buffer))
 	path_edit_replace(&b, "folder")

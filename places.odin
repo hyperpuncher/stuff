@@ -92,11 +92,17 @@ places_reveal :: proc(p: ^Places, rows: int) {
 places_geometry :: proc(g: Geometry) -> Geometry {
 	result := g
 	result.list_top -= g.row
-	result.rows += 1
+	result.height -= g.transfers
+	result.rows = max(1, int((list_bottom(result) - result.list_top) / result.row))
 	return result
 }
 
 places_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
+	// Center leading icons under the root breadcrumb, including font width.
+	icon_left :=
+		f32(u16(12 * g.scale)) +
+		f32(u16(6 * g.scale)) +
+		(f32(text_width(p.font, "/")) - 18 * g.scale) / 2
 	if clay.UI()(
 	{
 		layout = {
@@ -141,7 +147,7 @@ places_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 							layout = {
 								sizing = {clay.SizingGrow(), clay.SizingGrow()},
 								padding = {
-									left = u16(8 * g.scale) - inset,
+									left = u16(icon_left) - inset,
 									right = u16(8 * g.scale) - right_inset,
 								},
 								childGap = u16(8 * g.scale),
@@ -151,25 +157,35 @@ places_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 							cornerRadius = clay.CornerRadiusAll(6 * g.scale),
 						},
 						) {
-							cursor_color: clay.Color
-							text_color := theme.muted
-							if i == active {text_color = theme.text}
-							if b.places.focused &&
-							   i ==
-								   b.places.selected {cursor_color, text_color = theme.text, theme.text}
-							if clay.UI()(
-							{
-								layout = {
-									sizing = {
-										clay.SizingFixed(2 * g.scale),
-										clay.SizingFixed(16 * g.scale),
+							focused := b.places.focused && i == b.places.selected
+							text_color := i == active || focused ? theme.text : theme.muted
+							if focused {
+								if clay.UI()(
+								{
+									layout = {
+										sizing = {
+											clay.SizingFixed(2 * g.scale),
+											clay.SizingFixed(16 * g.scale),
+										},
 									},
+									floating = {
+										attachTo = .Parent,
+										clipTo = .AttachedParent,
+										attachment = {element = .LeftCenter, parent = .LeftCenter},
+										offset = {2 * g.scale, 0},
+										zIndex = 1,
+										pointerCaptureMode = .Passthrough,
+									},
+									backgroundColor = theme.text,
 								},
-								backgroundColor = cursor_color,
-							},
-							) {}
+								) {}
+							}
 							icon_element(p, place.icon, g.scale)
-							width := g.sidebar - 52 * g.scale
+							width :=
+								g.sidebar -
+								f32(u16(icon_left)) -
+								18 * g.scale -
+								2 * f32(u16(8 * g.scale))
 							if place_can_unmount(place) {width -= 26 * g.scale}
 							if clay.UI()(
 							{
@@ -186,33 +202,12 @@ places_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 									g.font_size,
 								)
 								if place.disk && place.space.valid && place.space.total > 0 {
-									if clay.UI()(
-									{
-										layout = {
-											sizing = {
-												clay.SizingFixed(max(0, width - 8 * g.scale)),
-												clay.SizingFixed(2 * g.scale),
-											},
-										},
-										backgroundColor = theme.inactive_selection,
-										cornerRadius = clay.CornerRadiusAll(g.scale),
-									},
-									) {
-										if clay.UI()(
-										{
-											layout = {
-												sizing = {
-													clay.SizingPercent(
-														disk_used_fraction(place.space),
-													),
-													clay.SizingGrow(),
-												},
-											},
-											backgroundColor = theme.muted,
-											cornerRadius = clay.CornerRadiusAll(g.scale),
-										},
-										) {}
-									}
+									progress_line(
+										clay.ID("disk-usage", u32(i)),
+										disk_used_fraction(place.space),
+										g.scale,
+										max(0, width - 8 * g.scale),
+									)
 								}
 							}
 							if place_can_unmount(place) {
@@ -236,5 +231,6 @@ places_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 				}
 			}
 		}
+		file_transfers_layout(b, g, p, icon_left)
 	}
 }

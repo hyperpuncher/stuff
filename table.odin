@@ -13,7 +13,7 @@ Geometry :: struct {
 	width, height, scale, tabs, header, footer, row, list_top: f32,
 	padding, gap, sidebar, list_padding, font_size:            f32,
 	columns:                                                   [Column]f32,
-	row_gap:                                                   f32,
+	row_gap, transfers:                                        f32,
 	rows:                                                      int,
 }
 
@@ -118,6 +118,26 @@ icon_element :: proc(p: ^Painter, kind: Icon, scale: f32, rotation: ^f64 = nil) 
 		userData = rotation,
 	},
 	) {}
+}
+
+progress_line :: proc(id: clay.ElementId, fraction, scale: f32, width: f32 = -1) {
+	sizing := clay.SizingGrow()
+	if width >= 0 {sizing = clay.SizingFixed(width)}
+	if clay.UI(id)(
+	{
+		layout = {sizing = {sizing, clay.SizingFixed(2 * scale)}},
+		backgroundColor = theme.inactive_selection,
+		cornerRadius = clay.CornerRadiusAll(scale),
+	},
+	) {
+		if clay.UI(clay.ID("progress-fill", id.id))(
+		{
+			layout = {sizing = {clay.SizingPercent(fraction), clay.SizingGrow()}},
+			backgroundColor = theme.muted,
+			cornerRadius = clay.CornerRadiusAll(scale),
+		},
+		) {}
+	}
 }
 
 format_modified :: proc(stamp: time.Time) -> string {
@@ -304,13 +324,6 @@ layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.Ren
 			if b.pending_disk != nil {
 				verb := b.pending_disk.unmount ? "unmounting" : "mounting"
 				summary = fmt.tprintf("%s %s…", verb, b.pending_disk.device)
-			}
-			if b.pending_files != nil {
-				op := b.pending_files
-				verb :=
-					op.kind == .Copy ? "copying" : op.kind == .Rename ? "renaming" : op.kind == .New_Folder ? "creating" : op.kind == .Restore ? "restoring" : op.kind == .Open_With ? "opening" : "moving to trash:"
-				if op.history != .Record {verb = op.history == .Undo ? "undoing" : "redoing"}
-				summary = fmt.tprintf("%s %d items…", verb, op.count)
 			}
 			if b.status_error != "" {summary, color = b.status_error, theme.text}
 			free_space := ""

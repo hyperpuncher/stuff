@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:os"
 import "core:slice"
 import "core:strings"
+import "core:sync"
 import linux "core:sys/linux"
 import "core:time"
 import "core:unicode/utf8"
@@ -60,7 +61,8 @@ Browser :: struct {
 	drag:                   Scroll_Drag,
 	autoscroll:             Auto_Scroll,
 	menu:                   Context_Menu,
-	pending_files:          ^File_Operation, // Borrowed until its result is applied.
+	transfers:              [dynamic]File_Transfer, // Jobs are borrowed until their results are applied.
+	transfer_first:         int,
 	undo_files, redo_files: [dynamic]File_Batch,
 	pending_trash:          ^File_Operation,
 	trash_requested:        bool,
@@ -72,8 +74,12 @@ browser_message :: proc(b: ^Browser, message: string) {
 }
 
 browser_destroy :: proc(b: ^Browser) {
+	// Request cancellation for every file job before waiting for any worker.
+	for job in b.transfers {sync.atomic_store(&job.op.cancel, true)}
+	if b.pending_trash != nil {sync.atomic_store(&b.pending_trash.cancel, true)}
 	size_destroy(b.size_service)
-	file_operation_stop(b.pending_files)
+	for job in b.transfers {file_operation_stop(job.op)}
+	delete(b.transfers)
 	file_operation_stop(b.pending_trash)
 	storage_destroy(b.storage)
 	b.storage, b.pending_disk = nil, nil

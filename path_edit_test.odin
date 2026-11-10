@@ -147,7 +147,7 @@ path_editor_preserves_graphemes_and_blocks_file_actions :: proc(t: ^testing.T) {
 	event.key.key, event.key.mod = sdl.K_DELETE, {}
 	_ = handle_event(&b, &event, g, &running)
 	testing.expect_value(t, strings.to_string(b.header.edit.buffer), "")
-	testing.expect(t, b.pending_files == nil)
+	testing.expect(t, len(b.transfers) == 0)
 	testing.expect_value(t, len(b.marks), 1)
 	path_edit_replace(&b, "bad\npath")
 	testing.expect_value(t, strings.to_string(b.header.edit.buffer), "")

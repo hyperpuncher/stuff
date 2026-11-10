@@ -3,6 +3,7 @@ package main
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "core:sync"
 import clay "vendor/clay"
 
 path_contains :: proc(parent, path: string) -> bool {
@@ -106,6 +107,16 @@ place_open :: proc(b: ^Browser, index: int, unmount := false) -> os.Error {
 
 storage_apply :: proc(b: ^Browser, result: Storage_Result) -> bool {
 	switch result.kind {
+	case .Progress:
+		for &job in b.transfers {
+			if job.op != result.files || sync.atomic_load(&job.op.cancel) {continue}
+			changed :=
+				job.progress.phase != result.progress.phase ||
+				file_progress_percent(job.progress) != file_progress_percent(result.progress)
+			job.progress = result.progress
+			return changed
+		}
+		return false
 	case .Files:
 		return file_operation_apply(b, result.files)
 	case .Space:

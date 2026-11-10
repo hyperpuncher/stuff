@@ -437,8 +437,8 @@ native_wayland_file_drag :: proc(t: ^testing.T) {
 	deadline = sdl.GetTicks() + 5000
 	for sdl.GetTicks() < deadline &&
 	    (!os.exists(copied) ||
-			    b.pending_files !=
-				    nil) {drag_test_pump(&b, g, renderer); time.sleep(time.Millisecond)}
+			    len(b.transfers) >
+				    0) {drag_test_pump(&b, g, renderer); time.sleep(time.Millisecond)}
 	testing.expect(t, os.exists(copied))
 	testing.expect(t, os.exists(fmt.tprintf("%s/source.txt", files)))
 	testing.expect_value(t, len(b.undo_files), 1)
@@ -492,7 +492,7 @@ native_wayland_file_drag :: proc(t: ^testing.T) {
 	testing.expect(t, os.exists(fmt.tprintf("%s/peer-send-ready", root)))
 	drag_test_gesture(&b, g, renderer, state.pointer, 1200, 85, 450, 85)
 	deadline = sdl.GetTicks() + 3000
-	for (!os.exists(fmt.tprintf("%s/dest/incoming.txt", files)) || b.pending_files != nil) &&
+	for (!os.exists(fmt.tprintf("%s/dest/incoming.txt", files)) || len(b.transfers) > 0) &&
 	    sdl.GetTicks() < deadline {drag_test_pump(&b, g, renderer); time.sleep(time.Millisecond)}
 	testing.expect(t, os.exists(fmt.tprintf("%s/dest/incoming.txt", files)))
 	testing.expect(t, os.exists(fmt.tprintf("%s/peer-files/incoming.txt", root)))
@@ -518,7 +518,7 @@ native_wayland_file_drag :: proc(t: ^testing.T) {
 	for b.file_drag.source != nil &&
 	    sdl.GetTicks() < deadline {drag_test_pump(&b, g, renderer); time.sleep(time.Millisecond)}
 	testing.expect(t, b.file_drag.source == nil)
-	testing.expect(t, b.pending_files == nil)
+	testing.expect(t, len(b.transfers) == 0)
 	testing.expect_value(t, len(b.undo_files), 2)
 	testing.expect(t, os.exists(fmt.tprintf("%s/source.txt", files)))
 	testing.expect(t, os.exists(fmt.tprintf("%s/source two.txt", files)))

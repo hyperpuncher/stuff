@@ -29,7 +29,7 @@ path_editor_word_delete_preserves_undo_selection :: proc(t: ^testing.T) {
 		event.key.mod |= sdl.KMOD_SHIFT
 		_ = handle_event(&b, &event, g, &running)
 		testing.expect_value(t, strings.to_string(b.header.edit.buffer), item.expected)
-		testing.expect(t, b.pending_files == nil)
+		testing.expect(t, len(b.transfers) == 0)
 	}
 }
 
@@ -73,6 +73,6 @@ path_editor_word_shortcuts :: proc(t: ^testing.T) {
 		_ = handle_event(&b, &event, g, &running)
 		testing.expect_value(t, strings.to_string(b.header.edit.buffer), item.expected)
 		testing.expect_value(t, b.header.edit.text.selection, [2]int{item.position, item.anchor})
-		testing.expect(t, b.pending_files == nil)
+		testing.expect(t, len(b.transfers) == 0)
 	}
 }

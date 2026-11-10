@@ -7,7 +7,7 @@ import clay "vendor/clay"
 import sdl "vendor:sdl3"
 
 drag_target :: proc(b: ^Browser, g: Geometry, x, y: f32) -> (path: string, id: u32) {
-	if b.pending_files != nil || b.storage == nil || b.header.edit.active || b.menu.active {return}
+	if b.storage == nil || b.header.edit.active || b.menu.active {return}
 	if x < 0 || y < 0 || x >= g.width || y >= g.height - g.footer {return}
 	if y < g.header {
 		target := header_target(&b.header, x, y)
@@ -66,8 +66,7 @@ file_drag_press :: proc(b: ^Browser, index: int, event: ^sdl.Event, mods: sdl.Ke
 		d.source == nil &&
 		d.pressed &&
 		event.button.clicks == 1 &&
-		b.path != TRASH_PATH &&
-		b.pending_files == nil
+		b.path != TRASH_PATH
 	defer_selection := eligible && marked && !shift && (ctrl || len(b.marks) > 1)
 	if !defer_selection {selection_click(b, index, ctrl, shift)}
 	if !eligible {return}
@@ -104,7 +103,7 @@ file_drag_motion :: proc(b: ^Browser, g: Geometry, x, y: f32) -> bool {
 }
 
 file_drop_start :: proc(b: ^Browser, paths: [dynamic]string, target: string) {
-	if b.pending_files != nil || b.storage == nil || target == "" || target == TRASH_PATH {
+	if b.storage == nil || target == "" || target == TRASH_PATH {
 		file_paths_destroy(paths)
 		browser_message(b, "cannot copy dropped files here")
 		return

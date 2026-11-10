@@ -155,7 +155,7 @@ open_with_run :: proc(op: ^File_Operation) -> string {
 }
 
 open_with_start :: proc(b: ^Browser) {
-	if len(b.marks) != 1 || b.pending_files != nil || b.storage == nil {return}
+	if len(b.marks) != 1 || len(b.transfers) > 0 || b.storage == nil {return}
 	op := new(File_Operation)
 	op.kind, op.sources = .Open_With, selection_paths(b)
 	op.target = strings.clone(b.path)

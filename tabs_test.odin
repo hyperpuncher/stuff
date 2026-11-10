@@ -182,7 +182,7 @@ closing_a_tab_does_not_cancel_its_file_operation :: proc(t: ^testing.T) {
 	if !testing.expect(t, b.storage != nil) {return}
 	file_dialog_start(&b, false)
 	file_dialog_submit(&b)
-	testing.expect(t, b.pending_files != nil)
+	testing.expect(t, len(b.transfers) > 0)
 	testing.expect(t, tab_open(&b, two) == nil)
 	running := true
 	testing.expect(t, tab_close(&b, 0, &running) == nil)

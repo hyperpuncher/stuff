@@ -168,7 +168,7 @@ sdl_drop_batches_own_paths_and_keep_the_drop_destination :: proc(t: ^testing.T) 
 		y    = g.list_top + 4,
 	}
 	testing.expect(t, file_drop_input(&b, &event, g))
-	testing.expect(t, b.pending_files == nil)
+	testing.expect(t, len(b.transfers) == 0)
 	// SDL owns its event strings. A later change must not alter our snapshot.
 	(cast([^]u8)input)[0] = '!'
 	event.drop = {
@@ -206,7 +206,7 @@ sdl_drop_batches_own_paths_and_keep_the_drop_destination :: proc(t: ^testing.T) 
 	_ = file_drop_input(&b, &event, g)
 	event.type = .DROP_COMPLETE
 	_ = file_drop_input(&b, &event, g)
-	testing.expect(t, b.pending_files == nil)
+	testing.expect(t, len(b.transfers) == 0)
 	testing.expect_value(t, len(b.undo_files), 1)
 	testing.expect_value(t, b.status_error, "the drop must contain local files")
 }

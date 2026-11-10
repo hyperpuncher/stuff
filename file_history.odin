@@ -91,6 +91,7 @@ file_history_run :: proc(op: ^File_Operation) {
 	#reverse for current in changes {
 		change := current
 		if sync.atomic_load(&op.cancel) {append(&op.changes, change); continue}
+		defer file_progress_advance(op)
 		from :=
 			to_trash || op.kind == .Rename && op.history == .Redo ? change.path : change.alternate
 		err := file_change_check(change, from)
@@ -131,7 +132,7 @@ file_history_apply :: proc(b: ^Browser, op: ^File_Operation) {
 }
 
 file_history_start :: proc(b: ^Browser, redo: bool) {
-	if b.pending_files != nil {return}
+	if len(b.transfers) > 0 {return}
 	if b.storage == nil {browser_message(b, "file operations are unavailable"); return}
 	from := &b.undo_files
 	if redo {from = &b.redo_files}

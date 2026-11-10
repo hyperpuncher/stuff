@@ -12,6 +12,8 @@ hover_target :: proc(b: ^Browser, g: Geometry) -> u32 {
 	if b.file_drag != nil && b.file_drag.receiving {return b.file_drag.target_id}
 	x, y := b.pointer.x, b.pointer.y
 	if !b.pointer.active || x < 0 || y < 0 || x >= g.width || y >= g.height {return 0}
+	if index := file_transfer_hit(b, g, x, y);
+	   index >= 0 {return clay.ID("transfer-cancel", u32(index)).id}
 	if y < g.tabs {return tabs_target(b, g, x, y)}
 	if b.header.edit.active && edit_is_dialog(b.header.edit.mode) {
 		for name in ([?]string{"file-dialog-cancel", "file-dialog-submit"}) {if header_hit(clay.ID(name), x, y) {return clay.ID(name).id}}
@@ -59,6 +61,7 @@ pointer_move :: proc(b: ^Browser, g: Geometry, x, y: f32) -> bool {
 }
 
 pointer_cursor :: proc(b: ^Browser, g: Geometry) -> sdl.SystemCursor {
+	if b.pointer.active && file_transfer_hit(b, g, b.pointer.x, b.pointer.y) >= 0 {return .POINTER}
 	if (b.header.edit.active || b.header.edit.mode == .Search) && b.pointer.active {
 		box := path_edit_box(g, b.header.edit.mode)
 		if b.pointer.x >= box.x &&

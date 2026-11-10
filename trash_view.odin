@@ -203,7 +203,7 @@ trash_view_apply :: proc(b: ^Browser, op: ^File_Operation) -> bool {
 }
 
 file_restore_start :: proc(b: ^Browser) {
-	if b.path != TRASH_PATH || b.pending_files != nil || b.storage == nil {return}
+	if b.path != TRASH_PATH || len(b.transfers) > 0 || b.storage == nil {return}
 	paths := selection_paths(b)
 	if len(paths) == 0 {file_paths_destroy(paths); return}
 	op := new(File_Operation)
@@ -225,7 +225,7 @@ file_restore_start :: proc(b: ^Browser) {
 }
 
 trash_empty_start :: proc(b: ^Browser) {
-	if b.pending_files != nil || b.pending_trash != nil || b.storage == nil {return}
+	if len(b.transfers) > 0 || b.pending_trash != nil || b.storage == nil {return}
 	op := new(File_Operation)
 	op.kind, op.target, op.trash_home = .Empty_Trash, strings.clone(TRASH_PATH), trash_home_path()
 	if !file_operation_launch(b, op) {file_operation_destroy(op)}

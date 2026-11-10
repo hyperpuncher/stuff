@@ -12,7 +12,7 @@ file_dialog_box :: proc(g: Geometry) -> clay.BoundingBox {
 }
 
 file_dialog_start :: proc(b: ^Browser, rename: bool) {
-	if b.pending_files != nil || b.path == TRASH_PATH {return}
+	if len(b.transfers) > 0 || b.path == TRASH_PATH {return}
 	if rename && len(b.marks) != 1 {browser_message(b, "select one item to rename"); return}
 	search_end(b)
 	edit := &b.header.edit

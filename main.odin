@@ -111,6 +111,7 @@ handle_input :: proc(
 	changed: bool,
 	err: os.Error,
 ) {
+	if file_progress_input(b, event, g) {return true, nil}
 	if handled, tab_err := tabs_input(b, event, g, running); handled {return true, tab_err}
 	if handled, edit_err := path_edit_input(b, event, g); handled {return true, edit_err}
 	if menu_input(b, event, g) {return true, nil}
@@ -462,6 +463,7 @@ run :: proc() -> int {
 				f32(ttf.GetFontHeight(font)) / scale,
 				tab_count(&b),
 			)
+			g.transfers = file_transfers_height(&b, g)
 			commands := layout(&b, g, &painter)
 			if hover_update(&b, g) {commands = layout(&b, g, &painter)}
 			cursor_update(hand, &b, g, text_cursor)

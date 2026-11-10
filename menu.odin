@@ -52,18 +52,18 @@ menu_box :: proc(b: ^Browser, g: Geometry) -> clay.BoundingBox {
 
 menu_enabled :: proc(b: ^Browser, action: Menu_Action) -> bool {
 	if !menu_visible(b, action) {return false}
-	if b.menu.places {return b.pending_files == nil && b.pending_trash == nil}
+	if b.menu.places {return len(b.transfers) == 0 && b.pending_trash == nil}
 	switch action {
 	case .Rename, .New_Folder, .Open_With:
-		return b.pending_files == nil
+		return len(b.transfers) == 0
 	case .Copy:
 		return len(b.marks) > 0
 	case .Paste:
-		return b.menu.paste && b.pending_files == nil
+		return b.menu.paste
 	case .Trash, .Restore:
-		return len(b.marks) > 0 && b.pending_files == nil
+		return len(b.marks) > 0 && len(b.transfers) == 0
 	case .Empty_Trash:
-		return len(b.visible) > 0 && b.pending_files == nil && b.pending_trash == nil
+		return len(b.visible) > 0 && len(b.transfers) == 0 && b.pending_trash == nil
 	case .Select_All:
 		return len(b.visible) > 0
 	}
@@ -102,7 +102,7 @@ menu_open :: proc(b: ^Browser, g: Geometry, x, y: f32) -> bool {
 	b.places.focused = false
 	b.drag = {}
 	menu_show(b, x, y)
-	b.menu.paste = b.pending_files == nil && file_clipboard_has_files()
+	b.menu.paste = file_clipboard_has_files()
 	return true
 }
 

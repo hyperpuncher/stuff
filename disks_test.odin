@@ -207,14 +207,25 @@ verify_disk_usage_layout :: proc(t: ^testing.T, p: ^Painter) {
 				testing.expect_value(t, green, u8(sample.color[1]))
 				testing.expect_value(t, blue, u8(sample.color[2]))
 			}
-			// A rounded end must blend into the track, not end in a hard cut.
-			corner := sdl.Rect{i32(filled.x + filled.width) - 1, i32(filled.y), 1, 1}
+			// Find blended coverage near the end, including fractional widths.
+			corner := sdl.Rect{i32(filled.x + filled.width) - 1, i32(filled.y), 3, 3}
 			surface := sdl.RenderReadPixels(p.renderer, &corner)
 			if surface == nil {testing.fail_now(t, string(sdl.GetError()))}
-			r, green, blue, alpha: u8
-			sdl_check(sdl.ReadSurfacePixel(surface, 0, 0, &r, &green, &blue, &alpha))
+			blended := false
+			for y in 0 ..< 3 {
+				for x in 0 ..< 3 {
+					r, green, blue, alpha: u8
+					sdl_check(
+						sdl.ReadSurfacePixel(surface, i32(x), i32(y), &r, &green, &blue, &alpha),
+					)
+					blended =
+						blended ||
+						(r > u8(min(theme.muted[0], theme.inactive_selection[0])) &&
+								r < u8(max(theme.muted[0], theme.inactive_selection[0])))
+				}
+			}
 			sdl.DestroySurface(surface)
-			testing.expect(t, r != u8(theme.muted[0]) && r != u8(theme.inactive_selection[0]))
+			testing.expect(t, blended)
 		}
 	}
 }
@@ -237,7 +248,7 @@ storage_worker_reads_and_stops :: proc(t: ^testing.T) {
 			case .Disks:
 				got_disks =
 					result.error == "" && len(result.disks) > 0 && result.disks[0].path == "/"
-			case .Operation, .Files:
+			case .Operation, .Files, .Progress:
 				testing.expect(t, false, "unexpected operation")
 			}
 			storage_result_destroy(result)

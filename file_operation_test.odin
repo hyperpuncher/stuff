@@ -138,7 +138,7 @@ trash_completion_keeps_scroll_and_current_cursor :: proc(t: ^testing.T) {
 		defer delete(expected)
 		b.first = moved_cursor ? 55 : 40
 		first := b.first
-		b.pending_files = &op
+		append(&b.transfers, File_Transfer{op = &op})
 		testing.expect(t, file_operation_apply(&b, &op))
 		testing.expect_value(t, b.first, first)
 		testing.expect_value(t, b.entries[b.visible[b.selected]].name, expected)
@@ -173,12 +173,12 @@ background_paste_does_not_change_navigation :: proc(t: ^testing.T) {
 	testing.expect(t, browser_navigate(&b, dest) == nil)
 	event.key.mod = sdl.KMOD_SHIFT
 	_ = handle_event(&b, &event, g, &running)
-	testing.expect(t, b.pending_files != nil)
+	testing.expect(t, len(b.transfers) > 0)
 	testing.expect(t, browser_navigate(&b, root) == nil)
 	deadline := sdl.GetTicks() + 3000
-	for b.pending_files != nil &&
+	for len(b.transfers) > 0 &&
 	    sdl.GetTicks() < deadline {_ = storage_poll(&b); time.sleep(time.Millisecond)}
-	testing.expect(t, b.pending_files == nil)
+	testing.expect(t, len(b.transfers) == 0)
 	testing.expect_value(t, b.path, root)
 	testing.expect_value(t, b.status_error, "")
 	testing.expect(t, os.exists(fmt.tprintf("%s/file", dest)))

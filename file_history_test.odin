@@ -11,7 +11,7 @@ import sdl "vendor:sdl3"
 file_history_test_run :: proc(t: ^testing.T, b: ^Browser, op: ^File_Operation) -> int {
 	defer file_operation_destroy(op)
 	op.count = len(op.sources) + len(op.changes)
-	b.pending_files = op
+	append(&b.transfers, File_Transfer{op = op})
 	file_operation_run(op)
 	testing.expect(t, file_operation_apply(b, op))
 	return op.failed
@@ -145,11 +145,11 @@ trash_history_restores_metadata_and_keeps_discarded_copies :: proc(t: ^testing.T
 
 file_history_test_wait :: proc(t: ^testing.T, b: ^Browser) {
 	deadline := sdl.GetTicks() + 3000
-	for b.pending_files != nil && sdl.GetTicks() < deadline {
+	for len(b.transfers) > 0 && sdl.GetTicks() < deadline {
 		_ = storage_poll(b)
 		time.sleep(time.Millisecond)
 	}
-	if b.pending_files != nil {testing.fail_now(t, "file worker did not finish")}
+	if len(b.transfers) > 0 {testing.fail_now(t, "file worker did not finish")}
 }
 
 @(test)
@@ -194,14 +194,14 @@ background_history_shortcuts_respect_input_focus_and_navigation :: proc(t: ^test
 	_ = handle_event(&b, &event, g, &running)
 	testing.expect_value(t, strings.to_string(b.header.edit.buffer), dest)
 	testing.expect_value(t, len(b.undo_files), 1)
-	testing.expect(t, b.pending_files == nil)
+	testing.expect(t, len(b.transfers) == 0)
 	event.key.mod |= sdl.KMOD_SHIFT
 	_ = handle_event(&b, &event, g, &running)
 	testing.expect_value(t, strings.to_string(b.header.edit.buffer), fmt.tprintf("%sdraft", dest))
 	path_edit_end(&b.header.edit)
 	event.key.mod = sdl.KMOD_CTRL
 	_ = handle_event(&b, &event, g, &running)
-	testing.expect(t, b.pending_files != nil)
+	testing.expect(t, len(b.transfers) > 0)
 	testing.expect(t, browser_navigate(&b, root) == nil)
 	file_history_test_wait(t, &b)
 	testing.expect_value(t, b.path, root)
