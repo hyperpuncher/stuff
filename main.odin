@@ -281,6 +281,9 @@ run :: proc() -> int {
 		browser_destroy(&b)
 		sdl.Quit()
 	}
+	b.sorts_path = sort_state_path(context.allocator)
+	defer delete(b.sorts_path)
+	sort_state_load(&b)
 	if len(selected) > 0 {
 		groups, err := file_manager_groups(selected[:], true)
 		defer file_manager_groups_destroy(groups)

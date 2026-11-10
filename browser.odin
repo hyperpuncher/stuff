@@ -34,6 +34,8 @@ Browser :: struct {
 	visible_bytes:          i64,
 	sort_column:            Column,
 	descending:             bool,
+	sorts:                  map[string]Sort_Spec, // Owned per-folder sort choices.
+	sorts_path:             string, // Borrowed state file path; empty disables saving.
 	back, forward:          [dynamic]History_Entry,
 	opens:                  [dynamic]File_Open,
 	status_error:           string,
@@ -73,6 +75,7 @@ browser_destroy :: proc(b: ^Browser) {
 	trash_records_destroy(b.trash_records)
 	delete(b.visible)
 	delete(b.marks)
+	sort_state_destroy(b.sorts)
 	delete(b.path)
 	delete(b.search)
 	for entry in b.back {history_entry_destroy(entry)}
@@ -108,6 +111,7 @@ browser_load :: proc(b: ^Browser, path: string) -> os.Error {
 	trash_records_destroy(b.trash_records)
 	b.trash_records = nil
 	b.path, b.entries = absolute, entries
+	sort_restore(b)
 	browser_message(b, "")
 	browser_filter(b)
 	storage_path(b.storage, b.path)
@@ -172,6 +176,7 @@ browser_set_sort :: proc(b: ^Browser, column: Column) {
 		b.sort_column = column
 		b.descending = false
 	}
+	sort_remember(b)
 	browser_sort(b)
 }
 
