@@ -36,12 +36,6 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "expected a stable vX.Y.Z tag" >&2; exit 1; }
-      - name: cache downloaded packages
-        uses: actions/cache@v6
-        with:
-          path: /var/cache/apt/archives
-          key: apt-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/build.yml') }}
-          restore-keys: apt-${{ runner.os }}-${{ runner.arch }}-
       - name: install system packages
         run: |
           sudo apt-get update
