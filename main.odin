@@ -273,8 +273,11 @@ run :: proc() -> int {
 	}
 	flags.parse_or_exit(&options, os.args, .Unix)
 	defer delete(selected)
-	if service &&
-	   path == "." {path = os.get_env("HOME", context.temp_allocator); if path == "" {path = "/"}}
+	if service && path == "." {
+		home, home_err := os.user_home_dir(context.temp_allocator)
+		path = home
+		if home_err != nil {path = "/"}
+	}
 	_ = sdl.SetAppMetadata("stuff", nil, "stuff")
 	b: Browser
 	defer {
