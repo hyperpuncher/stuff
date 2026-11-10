@@ -6,6 +6,20 @@ both architectures run checks, tests, and a private headless Wayland drag test o
 
 `stuff-bin` installs a release binary. `stuff-git` builds the main branch with Odin. VCS recipes are not updated for release-only version changes. the publisher preserves package revisions, rejects binary-package downgrades, and pushes only changed recipes.
 
+## file-manager integration
+
+`xdg-mime default stuff.desktop inode/directory` selects stuff for opening folders.
+
+`ShowItems` and `ShowFolders` use the separate `org.freedesktop.FileManager1` session service. the package keeps its activation file inactive under `/usr/share/stuff`. to enable it:
+
+```sh
+data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
+mkdir -p "$data_home/dbus-1/services"
+ln -s /usr/share/stuff/org.freedesktop.FileManager1.service "$data_home/dbus-1/services/org.freedesktop.FileManager1.service"
+```
+
+the command does not replace an existing file. disable any competing per-user activation files and close the previous running provider before starting stuff. no running provider is replaced automatically. properties requests return `NotSupported` until stuff has a properties dialog.
+
 ## setup
 
 add the `AUR_KEY` repository secret. use an SSH private key without a passphrase, with write access to both AUR repositories. the workflow checks the pinned AUR host key.

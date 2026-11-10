@@ -23,9 +23,11 @@ for package in stuff-bin stuff-git; do
 	if [[ $report == *' E: '* ]]; then exit 1; fi
 	root="$directory/pkg/$package"
 	test -f "$root/usr/share/applications/stuff.desktop"
+	test -f "$root/usr/share/stuff/org.freedesktop.FileManager1.service"
+	test ! -e "$root/usr/share/dbus-1/services/org.freedesktop.FileManager1.service"
 	test -f "$root/usr/share/icons/hicolor/scalable/apps/stuff.svg"
 	for license in LICENSE clay.txt lucide.txt; do
 		test -s "$root/usr/share/licenses/$package/$license"
 	done
-	SDL_VIDEODRIVER=dummy SDL_RENDER_DRIVER=software "$root/usr/bin/stuff" --smoke
+	SDL_VIDEODRIVER=dummy SDL_RENDER_DRIVER=software "$root/usr/bin/stuff" --smoke --select "$root/usr/share/applications/stuff.desktop"
 done

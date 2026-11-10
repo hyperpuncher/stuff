@@ -55,6 +55,15 @@ Bus_Iter :: struct {
 foreign dbus_lib {
 	dbus_threads_init_default :: proc() -> u32 ---
 	dbus_bus_get_private :: proc(kind: c.int, error: rawptr) -> ^Bus ---
+	dbus_bus_request_name :: proc(bus: ^Bus, name: cstring, flags: u32, error: rawptr) -> c.int ---
+	dbus_connection_pop_message :: proc(bus: ^Bus) -> ^Bus_Message ---
+	dbus_connection_send :: proc(bus: ^Bus, message: ^Bus_Message, serial: ^u32) -> u32 ---
+	dbus_message_get_member :: proc(message: ^Bus_Message) -> cstring ---
+	dbus_message_new_method_return :: proc(message: ^Bus_Message) -> ^Bus_Message ---
+	dbus_message_new_error :: proc(message: ^Bus_Message, name, text: cstring) -> ^Bus_Message ---
+	dbus_message_iter_next :: proc(iter: ^Bus_Iter) -> u32 ---
+	dbus_message_get_interface :: proc(message: ^Bus_Message) -> cstring ---
+	dbus_connection_get_outgoing_size :: proc(bus: ^Bus) -> c.long ---
 	dbus_bus_get_unique_name :: proc(bus: ^Bus) -> cstring ---
 	dbus_bus_add_match :: proc(bus: ^Bus, rule: cstring, error: rawptr) ---
 	dbus_connection_add_filter :: proc(bus: ^Bus, callback: proc "c" (bus: ^Bus, message: ^Bus_Message, data: rawptr) -> c.int, data, free_data: rawptr) -> u32 ---

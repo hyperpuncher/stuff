@@ -2,6 +2,7 @@ package main
 
 import "base:runtime"
 import "core:c"
+import "core:flags"
 import "core:fmt"
 import "core:math"
 import "core:os"
@@ -258,23 +259,35 @@ clay_error :: proc "c" (data: clay.ErrorData) {
 }
 
 run :: proc() -> int {
-	path := "."
-	smoke := false
-	for arg in os.args[1:] {
-		if arg == "--smoke" {smoke = true; continue}
-		if arg == "--help" {
-			fmt.println("usage: stuff [folder] [--smoke]\nuses the system monospace font.")
-			return 0
-		}
-		path = arg
+	Options :: struct {
+		path:     string `args:"pos=0" usage:"folder to browse"`,
+		smoke:    bool `usage:"draw one frame and exit"`,
+		service:  bool `args:"name=dbus-service,hidden"`,
+		selected: [dynamic]string `args:"name=select,manifold" usage:"reveal files from one folder; must be the last option"`,
 	}
+	using options := Options {
+		path = ".",
+	}
+	flags.parse_or_exit(&options, os.args, .Unix)
+	defer delete(selected)
+	if service &&
+	   path == "." {path = os.get_env("HOME", context.temp_allocator); if path == "" {path = "/"}}
 	_ = sdl.SetAppMetadata("stuff", nil, "stuff")
 	b: Browser
 	defer {
 		browser_destroy(&b)
 		sdl.Quit()
 	}
-	if err := browser_load(&b, path); err != nil {
+	if len(selected) > 0 {
+		groups, err := file_manager_groups(selected[:], true)
+		defer file_manager_groups_destroy(groups)
+		if err != nil ||
+		   len(groups) !=
+			   1 {fmt.eprintln("--select requires items from one readable folder"); return 1}
+		if err = browser_load(&b, groups[0].folder);
+		   err == nil {err = file_manager_select(&b, groups[0].paths[:])}
+		if err != nil {fmt.eprintfln("cannot select requested items: %v", err); return 1}
+	} else if err := browser_load(&b, path); err != nil {
 		fmt.eprintfln("cannot read %s: %v", path, err)
 		return 1
 	}
@@ -338,12 +351,21 @@ run :: proc() -> int {
 	clay.SetMeasureTextFunction(measure_text, font)
 	b.file_drag = file_drag_init(window)
 	defer {file_drag_destroy(b.file_drag); b.file_drag = nil}
+	manager: ^File_Manager
+	if !smoke &&
+	   dbus_threads_init_default() !=
+		   0 {manager = file_manager_start(dbus_bus_get_private(0, nil))}
+	defer file_manager_destroy(manager)
+	if service &&
+	   manager ==
+		   nil {fmt.eprintln("cannot own org.freedesktop.FileManager1; another provider may be running"); return 1}
 
 	running, dirty := true, true
 	shown := false
 	last_scale: f32 = 0
 	g: Geometry
 	for running {
+		dirty = file_manager_poll(manager, &b, window) || dirty
 		dirty = file_drag_poll(&b) || dirty
 		dirty = storage_poll(&b) || dirty
 		dirty = file_open_poll(&b) || dirty
