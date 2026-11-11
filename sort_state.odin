@@ -65,12 +65,12 @@ sort_restore :: proc(b: ^Browser) {
 	}
 }
 
-sort_remember :: proc(b: ^Browser) {
+sort_remember :: proc(b: ^Browser, persist := true) {
 	if b.path == "" || b.path == TRASH_PATH {return}
 	spec := Sort_Spec {
 		column     = b.sort_column,
 		descending = b.descending,
 	}
 	if b.path in b.sorts {b.sorts[b.path] = spec} else {b.sorts[strings.clone(b.path)] = spec}
-	sort_state_save(b)
+	if persist {sort_state_save(b)}
 }

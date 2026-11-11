@@ -121,6 +121,7 @@ browser_read :: proc(b: ^Browser, path: string) -> os.Error {
 	if path == TRASH_PATH {
 		if !trash_view_request(b) {return .Unsupported}
 		if b.path == TRASH_PATH {browser_message(b, ""); return nil}
+		sort_remember(b, persist = false)
 		search_reset(b)
 		os.file_info_slice_delete(b.entries, context.allocator)
 		trash_records_destroy(b.trash_records)
@@ -137,7 +138,13 @@ browser_read :: proc(b: ^Browser, path: string) -> os.Error {
 	defer os.close(dir)
 	entries := os.read_all_directory(dir, context.allocator) or_return
 	absolute := strings.clone(os.name(dir))
-	if b.path != absolute {search_reset(b); b.header.copied_until = 0; b.drag = {}}
+	if b.path != absolute {
+		// Keep the current choice even if this folder used the default sort.
+		sort_remember(b, persist = false)
+		search_reset(b)
+		b.header.copied_until = 0
+		b.drag = {}
+	}
 	// Keep free space visible during navigation within the same filesystem.
 	info: linux.Stat
 	if linux.fstat(linux.Fd(os.fd(dir)), &info) != .NONE ||
@@ -299,6 +306,12 @@ browser_navigate :: proc(b: ^Browser, path: string) -> os.Error {
 		return err
 	}
 	if b.path == previous.path {history_entry_destroy(previous); return nil}
+	// Going to an ancestor selects the child folder we came from.
+	if path_contains(b.path, previous.path) {
+		relative := strings.trim_left(strings.trim_prefix(previous.path, b.path), "/")
+		child, _ := strings.split_by_byte_iterator(&relative, '/')
+		browser_restore_location(b, {selected_name = child})
+	}
 	path_edit_end(&b.header.edit)
 	append(&b.back, previous)
 	for entry in b.forward {history_entry_destroy(entry)}

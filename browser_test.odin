@@ -118,6 +118,47 @@ browse_real_directory :: proc(t: ^testing.T) {
 }
 
 @(test)
+returning_from_a_child_keeps_the_parent_sort_and_selection :: proc(t: ^testing.T) {
+	root, err := os.make_directory_temp("/tmp", "stuff-return-", context.allocator)
+	if err != nil {testing.fail_now(t, "cannot create navigation fixture")}
+	defer delete(root)
+	defer os.remove_all(root)
+	downloads := fmt.aprintf("%s/Downloads", root)
+	defer delete(downloads)
+	for name in ([?]string{"Desktop", "Downloads", "Pictures"}) {
+		testing.expect(t, os.make_directory(fmt.tprintf("%s/%s", root, name)) == nil)
+	}
+	b: Browser
+	defer browser_destroy(&b)
+	// The parent uses the default sort. Only the child has a saved choice.
+	b.sorts[strings.clone(downloads)] = {
+		column     = .Modified,
+		descending = true,
+	}
+	testing.expect(t, browser_load(&b, root) == nil)
+	for history in ([?]bool{true, false}) {
+		for index, row in b.visible {
+			if b.entries[index].name == "Downloads" {selection_single(&b, row)}
+		}
+		testing.expect(t, browser_enter(&b) == nil)
+		testing.expect_value(t, b.path, downloads)
+		testing.expect_value(t, b.sort_column, Column.Modified)
+		testing.expect(t, b.descending)
+		if history {
+			testing.expect(t, browser_history(&b, true) == nil)
+		} else {
+			// The parent action also covers direct navigation to this ancestor.
+			testing.expect(t, browser_parent(&b) == nil)
+		}
+		testing.expect_value(t, b.path, root)
+		testing.expect_value(t, b.sort_column, Column.Name)
+		testing.expect(t, !b.descending)
+		testing.expect_value(t, b.entries[b.visible[b.selected]].name, "Downloads")
+		testing.expect(t, len(b.marks) == 1 && b.marks[b.visible[b.selected]])
+	}
+}
+
+@(test)
 mouse_history_restores_location :: proc(t: ^testing.T) {
 	root, err := os.make_directory_temp("/tmp", "stuff-history-", context.allocator)
 	if err != nil {testing.fail_now(t, "cannot create history fixture")}
