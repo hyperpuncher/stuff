@@ -137,6 +137,41 @@ verify_middle_fitting :: proc(t: ^testing.T, font: ^ttf.Font) {
 	testing.expect(t, a != b, "the ending must distinguish these filenames")
 }
 
+verify_rounded_corners :: proc(t: ^testing.T, renderer: ^sdl.Renderer) {
+	for corners in ([?]clay.CornerRadius{clay.CornerRadiusAll(2), clay.CornerRadiusAll(8), {topLeft = 5, bottomLeft = 5, topRight = 2, bottomRight = 2}, clay.CornerRadiusAll(15)}) {
+		for offset in ([?]f32{0, 0.25, 0.5, 0.75}) {
+			sdl_check(sdl.SetRenderDrawColor(renderer, 0, 0, 0, 255))
+			sdl_check(sdl.RenderClear(renderer))
+			paint_rounded_rectangle(
+				renderer,
+				{20 + offset, 20 + offset, 40, 30},
+				{backgroundColor = {255, 255, 255, 255}, cornerRadius = corners},
+			)
+			region := sdl.Rect{48, 20, 14, 31}
+			surface := sdl.RenderReadPixels(renderer, &region)
+			if surface == nil {testing.fail_now(t, string(sdl.GetError()))}
+			for start in ([?]i32{0, 19}) {
+				smooth := false
+				for y in start ..< start + 12 {
+					for x in 0 ..< 14 {
+						r, green, blue, alpha: u8
+						sdl_check(
+							sdl.ReadSurfacePixel(surface, i32(x), y, &r, &green, &blue, &alpha),
+						)
+						if r > 0 && r < 255 {smooth = true}
+					}
+				}
+				testing.expect(
+					t,
+					smooth,
+					"top and bottom rounded corners must have smooth coverage",
+				)
+			}
+			sdl.DestroySurface(surface)
+		}
+	}
+}
+
 @(test)
 large_directory_layout :: proc(t: ^testing.T) {
 	if !sdl.Init({.VIDEO}) {testing.fail_now(t, string(sdl.GetError()))}
@@ -150,6 +185,7 @@ large_directory_layout :: proc(t: ^testing.T) {
 	}
 	defer sdl.DestroyWindow(window)
 	defer sdl.DestroyRenderer(renderer)
+	verify_rounded_corners(t, renderer)
 	path := system_monospace_path()
 	defer delete(path)
 	cpath := strings.clone_to_cstring(path)

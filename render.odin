@@ -401,18 +401,17 @@ paint_rounded_rectangle :: proc(
 	}
 	color := data.backgroundColor
 	tint := sdl.FColor{color[0] / 255, color[1] / 255, color[2] / 255, color[3] / 255}
-	// A half-pixel fade gives small capsule ends smooth coverage.
-	capsule := radii[0] == limit && radii[1] == limit && radii[2] == limit && radii[3] == limit
-	vertices: [73]sdl.Vertex
-	indices: [324]i32
-	vertex_count, index_count := i32(37), i32(108)
+	// A one-pixel alpha fringe smooths every rounded edge, including unequal corners.
+	POINTS :: 4 * len(arc)
+	vertices: [1 + 2 * POINTS]sdl.Vertex = ---
+	indices: [9 * POINTS]i32 = ---
 	vertices[0] = {
 		position = {box.x + box.width / 2, box.y + box.height / 2},
 		color    = tint,
 	}
 	for center, corner in centers {
 		for point, step in arc {
-			index := 1 + corner * 9 + step
+			index := 1 + corner * len(arc) + step
 			direction: sdl.FPoint
 			switch corner {
 			case 0:
@@ -424,45 +423,35 @@ paint_rounded_rectangle :: proc(
 			case 3:
 				direction = {-point.y, point.x}
 			}
-			radius := capsule ? max(0, radii[corner] - 0.5) : radii[corner]
+			radius := max(0, radii[corner] - 0.5)
 			vertices[index] = {
 				position = {center.x + direction.x * radius, center.y + direction.y * radius},
 				color    = tint,
 			}
-			if capsule {
-				outer := radii[corner] + 0.5
-				vertices[index + 36] = {
-					position = {center.x + direction.x * outer, center.y + direction.y * outer},
-					color    = {tint.r, tint.g, tint.b, 0},
-				}
+			outer := radii[corner] + 0.5
+			vertices[index + POINTS] = {
+				position = {center.x + direction.x * outer, center.y + direction.y * outer},
+				color    = {tint.r, tint.g, tint.b, 0},
 			}
 		}
 	}
-	for i in 0 ..< 36 {
-		indices[i * 3 + 0] = 0
-		indices[i * 3 + 1] = i32(i + 1)
-		indices[i * 3 + 2] = i32((i + 1) % 36 + 1)
+	for i in 0 ..< POINTS {
+		a, b := i32(i + 1), i32((i + 1) % POINTS + 1)
+		triangles := [9]i32{0, a, b, a, a + POINTS, b + POINTS, a, b + POINTS, b}
+		copy(indices[i * 9:][:9], triangles[:])
 	}
 	previous: sdl.BlendMode
-	if capsule {
-		for i in 0 ..< 36 {
-			a, b := i32(i + 1), i32((i + 1) % 36 + 1)
-			triangles := [6]i32{a, a + 36, b + 36, a, b + 36, b}
-			copy(indices[108 + i * 6:][:6], triangles[:])
-		}
-		vertex_count, index_count = 73, 324
-		sdl_check(sdl.GetRenderDrawBlendMode(renderer, &previous))
-		sdl_check(sdl.SetRenderDrawBlendMode(renderer, sdl.BLENDMODE_BLEND))
-	}
-	defer if capsule {sdl_check(sdl.SetRenderDrawBlendMode(renderer, previous))}
+	sdl_check(sdl.GetRenderDrawBlendMode(renderer, &previous))
+	sdl_check(sdl.SetRenderDrawBlendMode(renderer, sdl.BLENDMODE_BLEND))
+	defer sdl_check(sdl.SetRenderDrawBlendMode(renderer, previous))
 	sdl_check(
 		sdl.RenderGeometry(
 			renderer,
 			nil,
 			raw_data(vertices[:]),
-			vertex_count,
+			len(vertices),
 			raw_data(indices[:]),
-			index_count,
+			len(indices),
 		),
 	)
 }
