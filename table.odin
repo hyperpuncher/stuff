@@ -6,7 +6,7 @@ import clay "vendor/clay"
 import sdl "vendor:sdl3"
 
 SIDEBAR_WIDTH :: 192
-MIN_WINDOW_WIDTH :: SIDEBAR_WIDTH + 480
+MIN_WINDOW_WIDTH :: SIDEBAR_WIDTH + 592
 MIN_WINDOW_HEIGHT :: 240
 
 Geometry :: struct {
@@ -42,11 +42,13 @@ geometry :: proc(
 	g.header += g.tabs
 	g.list_top = g.header + g.row + g.list_padding
 	g.columns[.Size] = 112 * scale
+	g.columns[.Type] = 88 * scale
 	g.columns[.Modified] = 184 * scale
-	g.columns[.Name] = max(
-		0,
-		g.width - g.sidebar - 2 * g.padding - 2 * g.gap - g.columns[.Size] - g.columns[.Modified],
-	)
+	name_width := g.width - g.sidebar - 2 * g.padding
+	for width, column in g.columns {
+		if column != .Name {name_width -= width + g.gap}
+	}
+	g.columns[.Name] = max(0, name_width)
 	g.rows = max(1, int((g.height - g.list_top - g.footer - g.list_padding) / g.row))
 	return g
 }
@@ -158,6 +160,7 @@ table_header :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 		names := [Column]string {
 			.Name     = "name",
 			.Size     = "size",
+			.Type     = "type",
 			.Modified = "modified",
 		}
 		for name, column in names {
@@ -238,6 +241,13 @@ table_row :: proc(b: ^Browser, index: int, g: Geometry, p: ^Painter) {
 					}
 				}
 				label(fit_label(p.font, value, g.columns[.Size]), theme.muted, g.font_size)
+			}
+			if clay.UI()({layout = column_layout(g, .Type)}) {
+				label(
+					fit_label(p.font, entry_type(entry), g.columns[.Type]),
+					theme.muted,
+					g.font_size,
+				)
 			}
 			if clay.UI()({layout = column_layout(g, .Modified)}) {
 				label(

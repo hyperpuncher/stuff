@@ -80,3 +80,61 @@ column_sorting_keeps_selection_and_scroll :: proc(t: ^testing.T) {
 	browser_set_sort(&b, .Size)
 	testing.expect_value(t, len(b.visible), 0)
 }
+
+@(test)
+file_type_labels :: proc(t: ^testing.T) {
+	cases := [?]struct {
+		name:  string,
+		kind:  os.File_Type,
+		label: string,
+	} {
+		{"photo.PNG", .Regular, "png"},
+		{"README", .Regular, "file"},
+		{".gitignore", .Regular, "file"},
+		{".config.json", .Regular, "json"},
+		{"trailing.", .Regular, "file"},
+		{"folder.zip", .Directory, "folder"},
+		{"link.png", .Symlink, "symlink"},
+		{"pipe.txt", .Named_Pipe, "pipe"},
+	}
+	for item in cases {
+		testing.expect_value(t, entry_type({name = item.name, type = item.kind}), item.label)
+	}
+}
+
+@(test)
+type_column_sorting_keeps_folders_first_and_name_ties :: proc(t: ^testing.T) {
+	b: Browser
+	defer browser_destroy(&b)
+	fixtures := [?]os.File_Info {
+		{name = "folder.zip", type = .Directory},
+		{name = "alpha.zip", type = .Regular},
+		{name = "beta.TXT", type = .Regular},
+		{name = "gamma.txt", type = .Regular},
+		{name = "README", type = .Regular},
+		{name = "link.txt", type = .Symlink},
+	}
+	b.entries = make([]os.File_Info, len(fixtures))
+	copy(b.entries, fixtures[:])
+	browser_filter(&b)
+	g := geometry(960, 640, 1)
+	event := sdl.Event {
+		button = {
+			type = .MOUSE_BUTTON_DOWN,
+			button = sdl.BUTTON_LEFT,
+			x = g.width - g.padding - g.columns[.Modified] - g.gap - g.columns[.Type] / 2,
+			y = g.header + 1,
+		},
+	}
+	running := true
+	orders := [?][len(fixtures)]string {
+		{"folder.zip", "README", "link.txt", "beta.TXT", "gamma.txt", "alpha.zip"},
+		{"folder.zip", "alpha.zip", "beta.TXT", "gamma.txt", "link.txt", "README"},
+	}
+	for expected, pass in orders {
+		testing.expect(t, handle_event(&b, &event, g, &running))
+		testing.expect_value(t, b.sort_column, Column.Type)
+		testing.expect_value(t, b.descending, pass == 1)
+		for name, i in expected {testing.expect_value(t, b.entries[b.visible[i]].name, name)}
+	}
+}

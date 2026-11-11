@@ -13,6 +13,7 @@ import sdl "vendor:sdl3"
 Column :: enum {
 	Name,
 	Size,
+	Type,
 	Modified,
 }
 
@@ -182,8 +183,21 @@ browser_sort :: proc(b: ^Browser) {
 	if b.selected >= 0 && b.selected < len(b.visible) {
 		selected_source = b.visible[b.selected]
 	}
+	Sort_Data :: struct {
+		browser: ^Browser,
+		types:   []string,
+	}
+	data := Sort_Data {
+		browser = b,
+	}
+	if b.sort_column == .Type {
+		// Normalize once per entry, not on every comparison.
+		data.types = make([]string, len(b.entries), context.temp_allocator)
+		for source in b.visible {data.types[source] = entry_type(b.entries[source])}
+	}
 	slice.sort_by_with_data(b.visible[:], proc(i, j: int, data: rawptr) -> bool {
-			b := cast(^Browser)data
+			data := cast(^Sort_Data)data
+			b := data.browser
 			a, z := b.entries[i], b.entries[j]
 			if (a.type == .Directory) != (z.type == .Directory) {return a.type == .Directory}
 			order: slice.Ordering
@@ -192,6 +206,8 @@ browser_sort :: proc(b: ^Browser) {
 				order = slice.cmp(a.name, z.name)
 			case .Size:
 				order = slice.cmp(size_value(b, a), size_value(b, z))
+			case .Type:
+				order = slice.cmp(data.types[i], data.types[j])
 			case .Modified:
 				order = slice.cmp(
 					time.to_unix_nanoseconds(a.modification_time),
@@ -200,7 +216,7 @@ browser_sort :: proc(b: ^Browser) {
 			}
 			if order != .Equal {return (order == .Less) != b.descending}
 			return a.name < z.name
-		}, b)
+		}, &data)
 	for source, i in b.visible {
 		if source == selected_source {b.selected = i; break}
 	}
@@ -216,6 +232,33 @@ browser_set_sort :: proc(b: ^Browser, column: Column) {
 	}
 	sort_remember(b)
 	browser_sort(b)
+}
+
+// Lowercase extensions use the temporary allocator. No file reads are needed.
+entry_type :: proc(entry: os.File_Info) -> string {
+	switch entry.type {
+	case .Regular:
+		ext := os.ext(entry.name)
+		if len(ext) > 1 && len(ext) < len(entry.name) {
+			return strings.to_lower(ext[1:], context.temp_allocator)
+		}
+		return "file"
+	case .Directory:
+		return "folder"
+	case .Symlink:
+		return "symlink"
+	case .Named_Pipe:
+		return "pipe"
+	case .Socket:
+		return "socket"
+	case .Block_Device:
+		return "block device"
+	case .Character_Device:
+		return "character device"
+	case .Undetermined:
+		return "unknown"
+	}
+	unreachable()
 }
 
 // These labels borrow the temporary allocator and must not be retained.

@@ -234,7 +234,7 @@ large_directory_layout :: proc(t: ^testing.T) {
 	resize(&b.visible, len(b.entries))
 	for &entry, i in b.entries {
 		// Only name is borrowed; fullpath remains empty for normal cleanup.
-		entry.name = "sample β file.txt"
+		entry.name = "sample β file.TXT"
 		entry.type = .Regular
 		b.visible[i] = i
 	}
@@ -244,7 +244,7 @@ large_directory_layout :: proc(t: ^testing.T) {
 		selection_single(&b, selected)
 		browser_reveal(&b, g.rows)
 		commands := layout(&b, g, &p)
-		testing.expect(t, int(commands.length) <= 6 * g.rows + 30)
+		testing.expect(t, int(commands.length) <= 7 * g.rows + 32)
 		file_selection := false
 		for i in 0 ..< commands.length {
 			cmd := commands.internalArray[i]
@@ -254,7 +254,7 @@ large_directory_layout :: proc(t: ^testing.T) {
 		}
 		testing.expect(t, file_selection, "the selected file must have a visible highlight")
 		paint(&p, commands, 960, 640)
-		testing.expect(t, len(p.slots) <= 3 * g.rows + min(g.rows, len(b.places.entries)) + 10)
+		testing.expect(t, len(p.slots) <= 4 * g.rows + min(g.rows, len(b.places.entries)) + 11)
 	}
 	// Reusing text slots after content changes must not retain old labels.
 	b.entries[b.visible[b.first]].name = "changed.txt"
@@ -288,22 +288,32 @@ large_directory_layout :: proc(t: ^testing.T) {
 		g = geometry(size[0], size[1], 1)
 		browser_reveal(&b, g.rows)
 		commands := layout(&b, g, &p)
-		testing.expect(t, int(commands.length) <= 6 * g.rows + 30)
-		has_file_name := false
+		testing.expect(t, int(commands.length) <= 7 * g.rows + 32)
+		has_file_name, has_type := false, false
 		for i in 0 ..< commands.length {
 			cmd := commands.internalArray[i]
 			if cmd.commandType != .Text {continue}
 			box := cmd.boundingBox
 			if box.y < g.list_top || box.y >= g.height - g.footer {continue}
 			if box.x < g.sidebar {testing.expect(t, box.x + box.width <= g.sidebar); continue}
-			name_right := g.sidebar + g.padding + g.columns[.Name]
-			size_right := name_right + g.gap + g.columns[.Size]
-			if box.x <
-			   name_right {has_file_name = has_file_name || cmd.renderData.text.stringContents.length > 0; testing.expect(t, box.x + box.width <= name_right + 0.01)} else if box.x < size_right {testing.expect(t, box.x + box.width <= size_right + 0.01)} else {testing.expect(t, box.x + box.width <= g.width - g.padding + 0.01)}
+			column, ok := column_at(g, box.x)
+			testing.expect(t, ok, "row text must start inside a column")
+			if !ok {continue}
+			right := g.sidebar + g.padding
+			for width, current in g.columns {
+				right += width
+				if current == column {break}
+				right += g.gap
+			}
+			testing.expect(t, box.x + box.width <= right + 0.01)
+			text := cmd.renderData.text.stringContents
+			if column == .Name {has_file_name = has_file_name || text.length > 0}
+			if column == .Type {has_type = has_type || string(text.chars[:text.length]) == "txt"}
 		}
 		testing.expect(t, has_file_name, "file names must remain visible in a narrow window")
+		testing.expect(t, has_type, "file types must appear in their own column")
 		paint(&p, commands, size[0], size[1])
-		testing.expect(t, len(p.slots) <= 3 * g.rows + min(g.rows, len(b.places.entries)) + 10)
+		testing.expect(t, len(p.slots) <= 4 * g.rows + min(g.rows, len(b.places.entries)) + 11)
 	}
 	verify_disk_usage_layout(t, &p)
 	// Extra rows must not change the viewport or move the footer.
@@ -314,7 +324,7 @@ large_directory_layout :: proc(t: ^testing.T) {
 		{960, 640, 1},
 		{1200, 800, 1.25},
 		{1892, 1080, 1.5},
-		{1344, 480, 2},
+		{2 * MIN_WINDOW_WIDTH, 480, 2},
 		{MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT, 1},
 	}
 	for viewport in viewports {

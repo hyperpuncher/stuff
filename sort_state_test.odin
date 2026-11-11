@@ -53,14 +53,14 @@ sort_choices_survive_a_restart :: proc(t: ^testing.T) {
 	first.sorts_path = state
 	defer browser_destroy(&first)
 	testing.expect(t, browser_load(&first, folder) == nil)
-	browser_set_sort(&first, .Modified)
+	browser_set_sort(&first, .Type)
 
 	restored: Browser
 	restored.sorts_path = state
 	defer browser_destroy(&restored)
 	sort_state_load(&restored)
 	testing.expect(t, browser_load(&restored, folder) == nil)
-	testing.expect_value(t, restored.sort_column, Column.Modified)
+	testing.expect_value(t, restored.sort_column, Column.Type)
 	testing.expect(t, !restored.descending)
 }
 

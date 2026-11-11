@@ -162,6 +162,7 @@ verify_column_hover :: proc(t: ^testing.T, p: ^Painter) {
 	names := [Column]string {
 		.Name     = "name",
 		.Size     = "size",
+		.Type     = "type",
 		.Modified = "modified",
 	}
 	for name, column in names {
