@@ -17,6 +17,18 @@ lightweight file manager for linux
 - [sdl3](https://www.libsdl.org/)
 - [clay](https://github.com/nicbarker/clay)
 
+## install
+
+### arch
+
+```sh
+paru -S stuff-bin
+```
+
+```sh
+paru -S stuff-git
+```
+
 ## development
 
 > requires odin, just, SDL3, SDL3_ttf, SDL3_image with SVG support, libudev, libdbus, fontconfig, and xdg-utils. mounting requires UDisks2 and a desktop authorization agent. tests use dbus-daemon.
