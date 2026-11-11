@@ -92,6 +92,22 @@ verify_context_menu_rendering :: proc(t: ^testing.T, p: ^Painter) {
 		small := geometry(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT, 1)
 		bounds := menu_box(&b, small)
 		testing.expect(t, bounds.y >= 0 && bounds.y + bounds.height <= small.height)
+		_ = layout(&b, small, p)
+		key := sdl.Event {
+			key = {type = .KEY_DOWN, key = sdl.K_END},
+		}
+		testing.expect(t, menu_input(&b, &key, small))
+		_ = layout(&b, small, p)
+		last := clay.GetElementData(clay.ID("menu-item", u32(Menu_Action.Select_All))).boundingBox
+		testing.expect(t, last.y >= 0 && last.y + last.height <= small.height)
+		testing.expect_value(
+			t,
+			menu_action_at(&b, small, last.x + 1, last.y + 1),
+			int(Menu_Action.Select_All),
+		)
+		key.key.key = sdl.K_HOME
+		testing.expect(t, menu_input(&b, &key, small))
+		testing.expect_value(t, b.menu.first, 0)
 		b.menu.active = false
 	}
 }

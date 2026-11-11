@@ -22,6 +22,8 @@ add the `AUR_KEY` repository secret. use an SSH private key without a passphrase
 
 ## local checks
 
+archive operations link to the system libarchive library. Ubuntu builds need `libarchive-dev`; Arch packages need `libarchive`.
+
 ```sh
 just check-packaging
 just bundle

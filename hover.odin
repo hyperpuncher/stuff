@@ -16,6 +16,8 @@ hover_target :: proc(b: ^Browser, g: Geometry) -> u32 {
 	   index >= 0 {return clay.ID("transfer-cancel", u32(index)).id}
 	if y < g.tabs {return tabs_target(b, g, x, y)}
 	if b.header.edit.active && edit_is_dialog(b.header.edit.mode) {
+		if format := archive_format_target(b, x, y);
+		   format >= 0 {return clay.ID("archive-format", u32(format)).id}
 		for name in ([?]string{"file-dialog-cancel", "file-dialog-submit"}) {if header_hit(clay.ID(name), x, y) {return clay.ID(name).id}}
 		return 0
 	}

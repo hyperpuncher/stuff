@@ -1,6 +1,7 @@
 package main
 
 import "core:fmt"
+import "core:mem"
 import "core:os"
 import "core:strings"
 import text_edit "core:text/edit"
@@ -15,14 +16,25 @@ Edit_Mode :: enum {
 	Search,
 	Rename,
 	New_Folder,
+	Compress,
+	Password,
 }
 
-edit_is_dialog :: proc(mode: Edit_Mode) -> bool {return mode == .Rename || mode == .New_Folder}
+edit_is_dialog :: proc(mode: Edit_Mode) -> bool {
+	#partial switch mode {
+	case .Rename, .New_Folder, .Compress, .Password:
+		return true
+	}
+	return false
+}
 
 Path_Edit :: struct {
 	active, dragging:    bool,
 	mode:                Edit_Mode,
 	source, composition: string, // Owned; core edits the separate builder.
+	parent:              string,
+	sources:             [dynamic]string,
+	archive_format:      Archive_Format,
 	waiting:             ^File_Operation,
 	buffer:              strings.Builder,
 	text:                text_edit.State, // Borrows buffer. Keep the active editor at a stable address.
@@ -32,8 +44,11 @@ Path_Edit :: struct {
 
 path_edit_end :: proc(edit: ^Path_Edit) {
 	text_edit.destroy(&edit.text)
+	if edit.mode == .Password {mem.zero_slice(edit.buffer.buf[:])}
 	strings.builder_destroy(&edit.buffer)
 	delete(edit.source)
+	delete(edit.parent)
+	file_paths_destroy(edit.sources)
 	delete(edit.composition)
 	font := edit.font
 	edit^ = {
@@ -66,10 +81,10 @@ path_edit_start :: proc(b: ^Browser) {
 
 path_edit_box :: proc(g: Geometry, mode: Edit_Mode = .Path) -> clay.BoundingBox {
 	if edit_is_dialog(mode) {
-		box := file_dialog_box(g)
+		box := file_dialog_box(g, mode)
 		return {
 			box.x + 8 * g.scale,
-			box.y + 8 * g.scale,
+			box.y + 8 * g.scale + (mode == .Password ? g.row : 0),
 			box.width - 16 * g.scale,
 			g.header - g.tabs - 8 * g.scale,
 		}
@@ -96,6 +111,8 @@ path_edit_changed :: proc(b: ^Browser) {
 	if len(edit.text.undo) > 100 {free(pop_front(&edit.text.undo), edit.text.undo_text_allocator)}
 	delete(edit.composition)
 	edit.composition = ""
+	if edit.mode ==
+	   .Compress {if format, valid := archive_name_format(strings.to_string(edit.buffer)); valid {edit.archive_format = format}}
 	search_update(b)
 }
 
@@ -108,6 +125,7 @@ path_edit_replace :: proc(b: ^Browser, value: string) {
 
 path_edit_clipboard_set :: proc(data: rawptr, value: string) -> bool {
 	b := cast(^Browser)data
+	if b.header.edit.mode == .Password {return false}
 	if !sdl.SetClipboardText(
 		strings.clone_to_cstring(value, context.temp_allocator),
 	) {browser_message(b, string(sdl.GetError())); return false}
@@ -216,7 +234,7 @@ path_edit_click :: proc(edit: ^Path_Edit, g: Geometry, x: f32, extend: bool) {
 	it := utf8.decode_grapheme_iterator_make(value)
 	for _, cluster in utf8.decode_grapheme_iterate(&it) {
 		next := cluster.byte_index + len(cluster.text)
-		width := f32(text_width(edit.font, value[:next]))
+		width := f32(text_width(edit.font, path_edit_display(edit, value[:next])))
 		if target < (previous_width + width) / 2 {break}
 		cursor, previous_width = next, width
 	}
@@ -306,6 +324,10 @@ path_edit_input :: proc(
 		if edit_is_dialog(edit.mode) {return true, nil}
 	case .MOUSE_BUTTON_DOWN:
 		if edit_is_dialog(edit.mode) {
+			if format := archive_format_target(b, event.button.x, event.button.y); format >= 0 {
+				archive_dialog_format(b, Archive_Format(format))
+				return true, nil
+			}
 			if header_hit(
 				clay.ID("file-dialog-cancel"),
 				event.button.x,
@@ -342,6 +364,7 @@ path_edit_input :: proc(
 		key := event.key.key
 		command := path_edit_key(key, ctrl, shift)
 		if command != .None {
+			if edit.mode == .Password && (command == .Copy || command == .Cut) {return true, nil}
 			text_edit.update_time(&edit.text)
 			path_edit_command(&edit.text, command)
 			path_edit_changed(b)
@@ -374,13 +397,46 @@ path_edit_input :: proc(
 	return false, nil
 }
 
+path_edit_display :: proc(edit: ^Path_Edit, value: string) -> string {
+	if edit.mode != .Password {return value}
+	count, _, _ := utf8.grapheme_count(value)
+	return strings.repeat("•", count, context.temp_allocator)
+}
+
+path_edit_sync_input :: proc(edit: ^Path_Edit, window: ^sdl.Window, password_input: ^bool) {
+	active := sdl.TextInputActive(window)
+	password := edit.mode == .Password
+	if active && (!edit.active || password_input^ != password) {
+		sdl_check(sdl.StopTextInput(window))
+		active = false
+	}
+	if !edit.active || active {return}
+	if password {
+		props := sdl.CreateProperties()
+		defer sdl.DestroyProperties(props)
+		sdl_check(
+			sdl.SetNumberProperty(
+				props,
+				sdl.PROP_TEXTINPUT_TYPE_NUMBER,
+				i64(sdl.TextInputType.TEXT_PASSWORD_HIDDEN),
+			),
+		)
+		sdl_check(sdl.SetBooleanProperty(props, sdl.PROP_TEXTINPUT_AUTOCORRECT_BOOLEAN, false))
+		sdl_check(sdl.StartTextInputWithProperties(window, props))
+	} else {sdl_check(sdl.StartTextInput(window))}
+	password_input^ = password
+}
+
 path_edit_caret :: proc(edit: ^Path_Edit) -> f32 {
 	value := strings.to_string(edit.buffer)
 	if edit.composition != "" {
 		low, _ := text_edit.sorted_selection(&edit.text)
-		return f32(text_width(edit.font, value[:low]) + text_width(edit.font, edit.composition))
+		return f32(
+			text_width(edit.font, path_edit_display(edit, value[:low])) +
+			text_width(edit.font, path_edit_display(edit, edit.composition)),
+		)
 	}
-	return f32(text_width(edit.font, value[:edit.text.selection[0]]))
+	return f32(text_width(edit.font, path_edit_display(edit, value[:edit.text.selection[0]])))
 }
 
 path_edit_ime_area :: proc(edit: ^Path_Edit, g: Geometry, window: ^sdl.Window) {
@@ -410,8 +466,9 @@ path_edit_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 		high = low + len(edit.composition)
 		selection_color = theme.inactive_selection
 	}
-	prefix := f32(text_width(p.font, display[:low]))
-	selection_width := f32(text_width(p.font, display[:high])) - prefix
+	prefix := f32(text_width(p.font, path_edit_display(edit, display[:low])))
+	selection_width := f32(text_width(p.font, path_edit_display(edit, display[:high]))) - prefix
+	display = path_edit_display(edit, display)
 	if clay.UI()(
 	{
 		layout = {
@@ -474,7 +531,7 @@ path_edit_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 						pointerCaptureMode = .Passthrough,
 					},
 				},
-				) {label(display == "" && edit.mode == .Search ? "search" : display, display == "" && edit.mode == .Search ? theme.muted : theme.text, g.font_size)}
+				) {label(display == "" && edit.mode == .Search ? "search" : display == "" && edit.mode == .Password ? "password" : display, display == "" ? theme.muted : theme.text, g.font_size)}
 				if edit.active && (low == high || edit.composition != "") {
 					if clay.UI(clay.ID("path-edit-caret"))(
 					{

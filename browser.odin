@@ -65,6 +65,7 @@ Browser :: struct {
 	menu:                   Context_Menu,
 	transfers:              [dynamic]File_Transfer, // Jobs are borrowed until their results are applied.
 	transfer_first:         int,
+	archive_requests:       [dynamic]Archive_Request,
 	undo_files, redo_files: [dynamic]File_Batch,
 	pending_trash:          ^File_Operation,
 	trash_requested:        bool,
@@ -89,6 +90,8 @@ browser_destroy :: proc(b: ^Browser) {
 	size_destroy(b.size_service)
 	for job in b.transfers {file_operation_stop(job.op)}
 	delete(b.transfers)
+	for request in b.archive_requests {delete(request.source); delete(request.target)}
+	delete(b.archive_requests)
 	file_operation_stop(b.pending_trash)
 	storage_destroy(b.storage)
 	b.storage, b.pending_disk = nil, nil

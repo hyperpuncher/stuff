@@ -6,6 +6,8 @@ import "core:sync"
 
 File_Action :: enum {
 	Copy,
+	Compress,
+	Extract,
 	Trash,
 	Rename,
 	New_Folder,
@@ -14,6 +16,8 @@ File_Action :: enum {
 	Empty_Trash,
 	Open_With,
 }
+File_Action_Set :: bit_set[File_Action]
+
 File_History_Mode :: enum {
 	Record,
 	Undo,
@@ -74,7 +78,11 @@ file_change_check :: proc(change: File_Change, path: string) -> os.Error {
 
 file_history_run :: proc(op: ^File_Operation) {
 	to_trash :=
-		(op.kind == .Copy || op.kind == .New_Folder || op.kind == .Restore) &&
+		(op.kind == .Copy ||
+				op.kind == .Compress ||
+				op.kind == .Extract ||
+				op.kind == .New_Folder ||
+				op.kind == .Restore) &&
 			op.history == .Undo ||
 		op.kind == .Trash && op.history == .Redo
 	mounts: [dynamic]Mount

@@ -10,6 +10,8 @@ Menu_Action :: enum {
 	Rename,
 	New_Folder,
 	Open_With,
+	Compress,
+	Extract,
 	Restore,
 	Empty_Trash,
 	Trash,
@@ -18,11 +20,13 @@ Menu_Action :: enum {
 Context_Menu :: struct {
 	active, paste, places: bool,
 	x, y, width:           f32,
-	selected:              int,
+	selected, first:       int,
 }
 
 menu_visible :: proc(b: ^Browser, action: Menu_Action) -> bool {
 	if b.menu.places {return action == .Empty_Trash}
+	if action == .Compress {return b.path != TRASH_PATH && len(b.marks) > 0}
+	if action == .Extract {return archive_selection_can_extract(b)}
 	if action == .Open_With {
 		if len(b.marks) != 1 {return false}
 		for index in b.marks {return b.entries[index].type == .Regular || b.entries[index].type == .Symlink}
@@ -35,11 +39,27 @@ menu_visible :: proc(b: ^Browser, action: Menu_Action) -> bool {
 	return true
 }
 
+menu_rows :: proc(b: ^Browser, g: Geometry) -> int {
+	count := 0
+	for action in Menu_Action {if menu_visible(b, action) {count += 1}}
+	return min(count, max(1, int((g.height - 8 * g.scale) / g.row)))
+}
+
+menu_reveal :: proc(b: ^Browser, g: Geometry) {
+	count, selected := 0, 0
+	for action in Menu_Action {
+		if !menu_visible(b, action) {continue}
+		if int(action) == b.menu.selected {selected = count}
+		count += 1
+	}
+	rows := menu_rows(b, g)
+	if b.menu.selected >= 0 {reveal_rows(&selected, &b.menu.first, count, rows)}
+	b.menu.first = clamp(b.menu.first, 0, max(0, count - rows))
+}
+
 menu_box :: proc(b: ^Browser, g: Geometry) -> clay.BoundingBox {
 	menu := b.menu
-	rows := 0
-	for action in Menu_Action {if menu_visible(b, action) {rows += 1}}
-	width, height := menu.width, f32(rows) * g.row + 8 * g.scale
+	width, height := menu.width, f32(menu_rows(b, g)) * g.row + 8 * g.scale
 	margin := 24 * g.scale
 	vertical_margin := min(margin, max(0, (g.height - height) / 2))
 	return {
@@ -56,7 +76,7 @@ menu_enabled :: proc(b: ^Browser, action: Menu_Action) -> bool {
 	switch action {
 	case .Rename, .New_Folder, .Open_With:
 		return len(b.transfers) == 0
-	case .Copy:
+	case .Copy, .Compress, .Extract:
 		return len(b.marks) > 0
 	case .Paste:
 		return b.menu.paste
@@ -76,7 +96,7 @@ menu_action_at :: proc(b: ^Browser, g: Geometry, x, y: f32) -> int {
 	   x >= box.x + box.width ||
 	   y < box.y + 4 * g.scale ||
 	   y >= box.y + box.height - 4 * g.scale {return -1}
-	row := int((y - box.y - 4 * g.scale) / g.row)
+	row := b.menu.first + int((y - box.y - 4 * g.scale) / g.row)
 	for action in Menu_Action {
 		if !menu_visible(b, action) {continue}
 		if row == 0 {return int(action)}
@@ -131,6 +151,10 @@ menu_execute :: proc(b: ^Browser, action: Menu_Action) {
 		file_dialog_start(b, action == .Rename)
 	case .Open_With:
 		open_with_start(b)
+	case .Compress:
+		archive_dialog_start(b)
+	case .Extract:
+		archive_extract_selection(b)
 	case .Restore:
 		file_restore_start(b)
 	case .Empty_Trash:
@@ -154,7 +178,12 @@ menu_input :: proc(b: ^Browser, event: ^sdl.Event, g: Geometry) -> bool {
 		   row >= 0 {menu_execute(b, Menu_Action(row))} else {b.menu.active = false}
 		return true
 	case .MOUSE_WHEEL:
-		b.menu.active = false
+		if header_hit(clay.ID("context-menu"), event.wheel.mouse_x, event.wheel.mouse_y) {
+			amount := event.wheel.direction == .FLIPPED ? -event.wheel.y : event.wheel.y
+			b.menu.first -= int(amount)
+			b.menu.selected = -1
+			menu_reveal(b, g)
+		} else {b.menu.active = false}
 		return true
 	case .KEY_DOWN:
 		switch event.key.key {
@@ -170,6 +199,7 @@ menu_input :: proc(b: ^Browser, event: ^sdl.Event, g: Geometry) -> bool {
 				i = (i + direction + count) % count
 				if menu_enabled(b, Menu_Action(i)) {b.menu.selected = i; break}
 			}
+			menu_reveal(b, g)
 		case sdl.K_RETURN:
 			if !event.key.repeat &&
 			   b.menu.selected >= 0 {menu_execute(b, Menu_Action(b.menu.selected))}
@@ -250,6 +280,8 @@ menu_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 		.Restore     = "restore",
 		.Empty_Trash = "empty trash",
 		.Open_With   = "open with…",
+		.Compress    = "compress…",
+		.Extract     = "extract",
 		.Select_All  = "select all",
 	}
 	// Keep measured geometry available for input before the popup's first frame.
@@ -264,9 +296,12 @@ menu_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 		.Restore     = .Restore,
 		.Empty_Trash = .Trash,
 		.Open_With   = .OpenWith,
+		.Compress    = .Archive,
+		.Extract     = .Archive,
 		.Select_All  = .SelectAll,
 	}
 	if !b.menu.active {return}
+	menu_reveal(b, g)
 	box := menu_box(b, g)
 	popup_shadow_layout(box, g.scale, p)
 	if clay.UI(clay.ID("context-menu"))(
@@ -281,8 +316,12 @@ menu_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 		cornerRadius = clay.CornerRadiusAll(8 * g.scale),
 	},
 	) {
+		rows := menu_rows(b, g)
+		row := -1
 		for name, action in names {
 			if !menu_visible(b, action) {continue}
+			row += 1
+			if row < b.menu.first || row >= b.menu.first + rows {continue}
 			id := clay.ID("menu-item", u32(action))
 			enabled := menu_enabled(b, action)
 			background: clay.Color

@@ -5,9 +5,11 @@ import "core:os"
 import "core:strings"
 import clay "vendor/clay"
 
-file_dialog_box :: proc(g: Geometry) -> clay.BoundingBox {
+file_dialog_box :: proc(g: Geometry, mode: Edit_Mode = .Rename) -> clay.BoundingBox {
 	width, height :=
 		min(480 * g.scale, g.width - 32 * g.scale), g.row + g.header - g.tabs + 16 * g.scale
+	if mode == .Compress || mode == .Password {height += g.row}
+	if mode == .Compress {height += 8 * g.scale}
 	return {(g.width - width) / 2, (g.height - height) / 2, width, height}
 }
 
@@ -40,11 +42,13 @@ file_dialog_start :: proc(b: ^Browser, rename: bool) {
 file_dialog_submit :: proc(b: ^Browser) {
 	edit := &b.header.edit
 	if edit.waiting != nil {return}
+	if edit.mode == .Password {archive_dialog_submit(b); return}
 	name := strings.to_string(edit.buffer)
 	if name == "" || name == "." || name == ".." || strings.contains_any(name, "/\r\n\x00") {
 		browser_message(b, "enter a name without slashes")
 		return
 	}
+	if edit.mode == .Compress {archive_dialog_submit(b); return}
 	if edit.mode == .Rename {
 		_, old := os.split_path(edit.source)
 		if name == old {path_edit_end(edit); return}
@@ -64,7 +68,7 @@ file_dialog_submit :: proc(b: ^Browser) {
 file_dialog_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 	edit := &b.header.edit
 	if !edit.active || !edit_is_dialog(edit.mode) {return}
-	box := file_dialog_box(g)
+	box := file_dialog_box(g, edit.mode)
 	popup_shadow_layout(box, g.scale, p)
 	if clay.UI(clay.ID("file-dialog"))(
 	{
@@ -78,7 +82,23 @@ file_dialog_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 		cornerRadius = clay.CornerRadiusAll(8 * g.scale),
 	},
 	) {
+		if edit.mode == .Password {
+			if clay.UI()(
+			{
+				layout = {
+					sizing = {clay.SizingGrow(), clay.SizingFixed(g.row)},
+					childAlignment = {y = .Center},
+				},
+			},
+			) {label(fit_label(p.font, fmt.tprintf("password: %s", os.base(edit.source)), box.width - 16 * g.scale, middle = true), theme.text, g.font_size)}
+		}
 		path_edit_layout(b, g, p)
+		if edit.mode == .Compress {
+			if clay.UI()(
+			{layout = {sizing = {clay.SizingGrow(), clay.SizingFixed(8 * g.scale)}}},
+			) {}
+			archive_format_layout(b, g)
+		}
 		if clay.UI()({layout = {sizing = {clay.SizingGrow(), clay.SizingFixed(8 * g.scale)}}}) {}
 		if clay.UI()(
 		{
@@ -102,7 +122,7 @@ file_dialog_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 				},
 				) {
 					label(
-						i == 0 ? "cancel" : edit.waiting != nil ? "working…" : edit.mode == .Rename ? "rename" : "create",
+						i == 0 ? "cancel" : edit.waiting != nil ? "working…" : edit.mode == .Password ? "extract" : edit.mode == .Rename ? "rename" : "create",
 						theme.text,
 						g.font_size,
 					)

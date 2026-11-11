@@ -39,7 +39,7 @@ jobs:
       - name: install system packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends just libsdl3-dev libsdl3-image-dev libsdl3-ttf-dev fontconfig libdbus-1-dev libudev-dev libwayland-dev dbus-daemon fonts-dejavu-core labwc desktop-file-utils
+          sudo apt-get install -y --no-install-recommends just libsdl3-dev libsdl3-image-dev libsdl3-ttf-dev fontconfig libarchive-dev libdbus-1-dev libudev-dev libwayland-dev dbus-daemon fonts-dejavu-core labwc desktop-file-utils
       - uses: laytan/setup-odin@v2
         with:
           token: ${{ github.token }}
@@ -64,7 +64,7 @@ jobs:
         shell: bash
     steps:
       - name: install package tools and dependencies
-        run: pacman -Syu --noconfirm --needed git just odin dbus fontconfig hicolor-icon-theme sdl3 sdl3_image sdl3_ttf systemd-libs udisks2 wayland xdg-utils ttf-dejavu namcap desktop-file-utils zstd
+        run: pacman -Syu --noconfirm --needed git just odin dbus fontconfig libarchive hicolor-icon-theme sdl3 sdl3_image sdl3_ttf systemd-libs udisks2 wayland xdg-utils ttf-dejavu namcap desktop-file-utils zstd
       - uses: actions/checkout@v7
         with:
           persist-credentials: false

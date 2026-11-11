@@ -54,6 +54,9 @@ file_transfers_rows :: proc(g: Geometry) -> int {
 }
 
 file_transfer_hit :: proc(b: ^Browser, g: Geometry, x, y: f32) -> int {
+	if b.header.edit.active &&
+	   edit_is_dialog(b.header.edit.mode) &&
+	   header_hit(clay.ID("file-dialog"), x, y) {return -1}
 	if g.transfers <= 0 || !header_hit(clay.ID("transfers-viewport"), x, y) {return -1}
 	last := min(len(b.transfers), b.transfer_first + file_transfers_rows(g) + 1)
 	for i in b.transfer_first ..< last {
@@ -100,6 +103,8 @@ file_transfer_icon :: proc(kind: File_Action) -> Icon {
 	switch kind {
 	case .Copy:
 		return .CopyPath
+	case .Compress, .Extract:
+		return .Archive
 	case .Trash, .List_Trash, .Empty_Trash:
 		return .Trash
 	case .Rename:

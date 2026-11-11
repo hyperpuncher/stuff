@@ -28,6 +28,9 @@ File_Operation :: struct {
 	label:                           string, // Owned; immutable after launch.
 	progress:                        File_Progress,
 	progress_due:                    u64,
+	archive_format:                  Archive_Format,
+	archive_password:                string, // Owned and immutable during this attempt.
+	archive_needs_password:          bool, // Worker-owned until the final result.
 }
 
 file_operation_stop :: proc(op: ^File_Operation) {
@@ -52,6 +55,7 @@ file_operation_destroy :: proc(op: ^File_Operation) {
 	delete(op.trash_home)
 	delete(op.error)
 	delete(op.label)
+	archive_secret_destroy(op.archive_password)
 	free(op)
 }
 
@@ -68,12 +72,13 @@ file_operation_start :: proc(b: ^Browser, trash: bool) {
 	if !file_operation_launch(b, op) {file_operation_destroy(op)}
 }
 
+file_operation_parallel :: proc(op: ^File_Operation) -> bool {
+	return op.history == .Record && op.kind in File_Action_Set{.Copy, .Compress, .Extract}
+}
+
 file_operation_launch :: proc(b: ^Browser, op: ^File_Operation) -> bool {
 	for job in b.transfers {
-		if op.kind != .Copy ||
-		   op.history != .Record ||
-		   job.op.kind != .Copy ||
-		   job.op.history != .Record {
+		if !file_operation_parallel(op) || !file_operation_parallel(job.op) {
 			browser_message(b, "another file operation is running")
 			return false
 		}
@@ -85,11 +90,14 @@ file_operation_launch :: proc(b: ^Browser, op: ^File_Operation) -> bool {
 	if len(op.changes) > 0 {path = op.changes[0].path}
 	_, name := os.split_path(path)
 	if name == "" {name = path}
-	if op.count == 1 {op.label = strings.clone(name)} else if op.count > 1 {
+	if op.kind == .Compress && op.history == .Record {
+		op.label = strings.clone(os.base(op.destination))
+	} else if op.count == 1 {op.label = strings.clone(name)} else if op.count > 1 {
 		op.label = fmt.aprintf("%d %s", op.count, op.kind == .Copy ? "files" : "items")
 	} else {op.label = strings.clone("trash")}
 	op.progress.total = u64(op.count)
-	if op.kind == .Copy && op.history == .Record {op.progress.phase = .Preparing}
+	if (op.kind == .Copy || op.kind == .Compress) &&
+	   op.history == .Record {op.progress.phase = .Preparing}
 	if op.kind == .Open_With {op.progress.total = 0}
 	initial := op.progress
 	op.worker = thread.create_and_start_with_data(op, file_operation_worker, name = "stuff-files")
@@ -113,6 +121,7 @@ file_operation_run :: proc(op: ^File_Operation) {
 	if op.kind ==
 	   .Open_With {op.error = open_with_run(op); if op.error != "" {op.failed = 1}; return}
 	if op.history != .Record {file_history_run(op); return}
+	if op.kind == .Compress || op.kind == .Extract {archive_run(op); return}
 	if op.kind == .Copy {
 		dir, err := directory_open(op.target)
 		if err != nil {
@@ -199,6 +208,17 @@ file_operation_apply :: proc(b: ^Browser, op: ^File_Operation) -> bool {
 		if cancelled {browser_message(b, "operation cancelled")} else if op.error != "" {browser_message(b, op.error)}
 		return true
 	}
+	if op.kind == .Extract && op.archive_needs_password && !cancelled {
+		append(
+			&b.archive_requests,
+			Archive_Request{strings.clone(op.sources[0]), strings.clone(op.target)},
+		)
+		browser_message(
+			b,
+			op.archive_password == "" ? "this archive needs a password" : "incorrect password",
+		)
+		return true
+	}
 	if op.kind == .Empty_Trash {size_cache_clear(b)} else {
 		size_cancel(b)
 		size_cache_invalidate(b, op.target, descendants = false)
@@ -247,7 +267,7 @@ file_operation_apply :: proc(b: ^Browser, op: ^File_Operation) -> bool {
 	}
 	if op.failed > 0 {
 		verb :=
-			op.kind == .Copy ? "copy" : op.kind == .Rename ? "rename" : op.kind == .New_Folder ? "create folder" : op.kind == .Restore ? "restore" : "move to trash"
+			op.kind == .Copy ? "copy" : op.kind == .Compress ? "compress" : op.kind == .Extract ? "extract" : op.kind == .Rename ? "rename" : op.kind == .New_Folder ? "create folder" : op.kind == .Restore ? "restore" : "move to trash"
 		if op.history != .Record {verb = op.history == .Undo ? "undo" : "redo"}
 		browser_message(
 			b,

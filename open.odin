@@ -27,6 +27,11 @@ file_open :: proc(b: ^Browser, path: string) {
 		return
 	}
 
+	if _, archive := archive_stem(os.base(path)); archive {
+		parent, _ := os.split_path(path)
+		archive_extract_start(b, path, parent)
+		return
+	}
 	args := [?]cstring{"xdg-open", cpath, nil}
 	process := sdl.CreateProcess(raw_data(args[:]), false)
 	if process == nil {

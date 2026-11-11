@@ -196,7 +196,7 @@ handle_input :: proc(
 				b.places.focused = false
 				return true, place_open(b, b.places.selected)
 			}
-			err = browser_enter(b)
+			if !archive_extract_selection(b) {err = browser_enter(b)}
 		case sdl.K_BACKSPACE:
 			err = browser_parent(b)
 		case sdl.K_H:
@@ -415,6 +415,7 @@ run :: proc() -> int {
 	shown := false
 	last_scale: f32 = 0
 	g: Geometry
+	password_input := false
 	for running {
 		dirty = file_manager_poll(manager, &b, window) || dirty
 		dirty = file_drag_poll(&b) || dirty
@@ -424,6 +425,8 @@ run :: proc() -> int {
 		dirty = file_open_poll(&b) || dirty
 		dirty = header_update(&b.header, sdl.GetTicks()) || dirty
 		dirty = browser_message_update(&b, sdl.GetTicks()) || dirty
+		dirty = archive_prompt_update(&b) || dirty
+		path_edit_sync_input(&b.header.edit, window, &password_input)
 		if dirty {
 			width, height: c.int
 			scale := sdl.GetWindowDisplayScale(window)
@@ -508,9 +511,7 @@ run :: proc() -> int {
 			} else {
 				dirty = handle_event(&b, &event, g, &running) || dirty
 			}
-			if b.header.edit.active != sdl.TextInputActive(window) {
-				if b.header.edit.active {sdl_check(sdl.StartTextInput(window))} else {sdl_check(sdl.StopTextInput(window))}
-			}
+			path_edit_sync_input(&b.header.edit, window, &password_input)
 			cursor_update(hand, &b, g, text_cursor)
 			if !sdl.PollEvent(&event) {break}
 		}
