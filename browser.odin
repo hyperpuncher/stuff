@@ -277,13 +277,22 @@ browser_summary :: proc(b: ^Browser) -> string {
 	noun := "items"
 	if len(b.visible) == 1 {noun = "item"}
 	total := fmt.tprintf("%d %s", len(b.visible), noun)
-	if len(b.visible) == 0 {return total}
+	if len(b.visible) == 0 || len(b.marks) == 0 {return total}
 	if len(b.marks) != 1 {
+		bytes := b.marked_bytes
+		complete := true
+		for source in b.marks {
+			entry := b.entries[source]
+			if entry.type != .Directory {continue}
+			size := b.path == TRASH_PATH ? -1 : size_value(b, entry)
+			if size < 0 {complete = false} else {bytes += size}
+		}
 		return fmt.tprintf(
-			"%s    selected: %d items (%s)",
+			"%s    selected: %d items (%s%s)",
 			total,
 			len(b.marks),
-			format_size(b.marked_bytes),
+			complete ? "" : "at least ",
+			format_size(bytes),
 		)
 	}
 	source := 0
@@ -295,6 +304,7 @@ browser_summary :: proc(b: ^Browser) -> string {
 		detail = format_size(entry.size)
 	case .Directory:
 		detail = "folder"
+		if size := size_value(b, entry); size >= 0 {detail = format_size(size)}
 	case .Symlink:
 		detail = "symbolic link"
 	}

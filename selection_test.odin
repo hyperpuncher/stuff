@@ -147,6 +147,55 @@ multi_selection_ranges_sort_and_hidden_items :: proc(t: ^testing.T) {
 }
 
 @(test)
+selection_summary_uses_cached_folder_sizes :: proc(t: ^testing.T) {
+	b: Browser
+	defer browser_destroy(&b)
+	fixtures := [?]os.File_Info {
+		{name = "folder", type = .Directory},
+		{name = "waiting", type = .Directory},
+		{name = "file.txt", type = .Regular, size = 1024},
+		{name = "link", type = .Symlink, size = 4096},
+	}
+	b.entries = make([]os.File_Info, len(fixtures))
+	copy(b.entries, fixtures[:])
+	for &entry in b.entries {entry.fullpath = fmt.aprintf("/selection-summary/%s", entry.name)}
+	browser_filter(&b)
+	selection_all(&b)
+	b.sizes[strings.clone(b.entries[0].fullpath)] = {
+		state = .Known,
+		bytes = 2048,
+	}
+	waiting := strings.clone(b.entries[1].fullpath)
+	for state in ([?]Size_State{.Pending, .Failed}) {
+		b.sizes[waiting] = {
+			state = state,
+			bytes = 5120,
+		}
+		testing.expect_value(
+			t,
+			browser_summary(&b),
+			"4 items    selected: 4 items (at least 3.0 KiB)",
+		)
+	}
+	// A known empty folder completes the total. Later cache updates need no reselection.
+	b.sizes[waiting] = {
+		state = .Known,
+	}
+	testing.expect_value(t, browser_summary(&b), "4 items    selected: 4 items (3.0 KiB)")
+	selection_single(&b, 1)
+	testing.expect_value(t, browser_summary(&b), "4 items    selected: 0 B")
+	b.sizes[waiting] = {
+		state = .Known,
+		bytes = 5120,
+	}
+	testing.expect_value(t, browser_summary(&b), "4 items    selected: 5.0 KiB")
+	selection_all(&b)
+	testing.expect_value(t, browser_summary(&b), "4 items    selected: 4 items (8.0 KiB)")
+	selection_clear(&b)
+	testing.expect_value(t, browser_summary(&b), "4 items")
+}
+
+@(test)
 context_menu_preserves_groups_and_captures_input :: proc(t: ^testing.T) {
 	if !sdl.Init({.VIDEO}) {testing.fail_now(t, string(sdl.GetError()))}
 	defer sdl.Quit()
