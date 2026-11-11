@@ -1,6 +1,114 @@
 package main
 
+import "core:math"
 import "core:strings"
+import clay "vendor/clay"
+import sdl "vendor:sdl3"
+
+Selection_Drag :: struct {
+	active:     bool,
+	start, end: clay.Vector2,
+}
+
+selection_drag_box :: proc(d: Selection_Drag) -> clay.BoundingBox {
+	return {
+		min(d.start.x, d.end.x),
+		min(d.start.y, d.end.y),
+		abs(d.end.x - d.start.x),
+		abs(d.end.y - d.start.y),
+	}
+}
+
+selection_drag_input :: proc(b: ^Browser, event: ^sdl.Event, g: Geometry) -> bool {
+	d := &b.selection_drag
+	if !d.active {return false}
+	#partial switch event.type {
+	case .MOUSE_MOTION:
+		d.end = {
+			clamp(event.motion.x, g.sidebar, g.width),
+			clamp(event.motion.y, g.list_top, list_bottom(g)),
+		}
+		box := selection_drag_box(d^)
+		selection_clear(b)
+		if box.width > 0 && box.height > 0 {
+			for row in b.first ..< min(b.first + g.rows + 1, len(b.visible)) {
+				top := g.list_top + f32(row - b.first) * g.row
+				if top < box.y + box.height && top + g.row > box.y {
+					selection_mark(b, row, true)
+					b.selected = row
+				}
+			}
+		}
+		b.anchor = b.selected
+		return true
+	case .MOUSE_BUTTON_UP:
+		if event.button.button == sdl.BUTTON_LEFT {d^ = {}; return true}
+	case .KEY_DOWN,
+	     .MOUSE_BUTTON_DOWN,
+	     .MOUSE_WHEEL,
+	     .WINDOW_FOCUS_LOST,
+	     .WINDOW_HIDDEN,
+	     .WINDOW_MINIMIZED,
+	     .WINDOW_PIXEL_SIZE_CHANGED,
+	     .WINDOW_DISPLAY_SCALE_CHANGED,
+	     .DROP_BEGIN:
+		d^ = {}
+	}
+	return false
+}
+
+selection_drag_begin :: proc(b: ^Browser, g: Geometry, x, y: f32) -> bool {
+	if x < g.sidebar || x >= g.width || y < g.list_top || y >= list_bottom(g) {return false}
+	file_drag_cancel_press(b)
+	selection_clear(b)
+	b.places.focused, b.pointer.active, b.hovered = false, false, 0
+	b.selection_drag = {
+		active = true,
+		start  = {x, y},
+		end    = {x, y},
+	}
+	return true
+}
+
+selection_drag_layout :: proc(b: ^Browser) {
+	if !b.selection_drag.active {return}
+	box := selection_drag_box(b.selection_drag)
+	// Geometry is already in physical pixels. Snap both edges, not just the size.
+	right, bottom := math.round(box.x + box.width), math.round(box.y + box.height)
+	box.x, box.y = math.round(box.x), math.round(box.y)
+	box.width, box.height = right - box.x, bottom - box.y
+	if box.width <= 0 || box.height <= 0 {return}
+	stroke :: 1
+	fill := theme.text
+	fill[3] = 24
+	if clay.UI(clay.ID("selection-drag"))(
+	{
+		layout = {sizing = {clay.SizingFixed(box.width), clay.SizingFixed(box.height)}},
+		backgroundColor = fill,
+		floating = {
+			attachTo = .Root,
+			offset = {box.x, box.y},
+			zIndex = 2,
+			pointerCaptureMode = .Passthrough,
+		},
+	},
+	) {
+		for edge in ([4]clay.BoundingBox{{0, 0, box.width, stroke}, {0, box.height - stroke, box.width, stroke}, {0, 0, stroke, box.height}, {box.width - stroke, 0, stroke, box.height}}) {
+			if clay.UI()(
+			{
+				layout = {sizing = {clay.SizingFixed(edge.width), clay.SizingFixed(edge.height)}},
+				floating = {
+					attachTo = .Parent,
+					offset = {edge.x, edge.y},
+					zIndex = 2,
+					pointerCaptureMode = .Passthrough,
+				},
+				backgroundColor = theme.muted,
+			},
+			) {}
+		}
+	}
+}
 
 // Marks use entry indices, not sorted row positions. The cursor can move without marks.
 selection_clear :: proc(b: ^Browser) {

@@ -48,6 +48,9 @@ handle_event :: proc(b: ^Browser, event: ^sdl.Event, g: Geometry, running: ^bool
 			   event.type == .KEY_DOWN && event.key.key == sdl.K_ESCAPE {return true}
 		}
 	}
+	selection_cancelled := b.selection_drag.active
+	if selection_drag_input(b, event, g) {return true}
+	selection_cancelled = selection_cancelled && !b.selection_drag.active
 	if file_drop_input(b, event, g) {return true}
 	pointer_changed := false
 	#partial switch event.type {
@@ -64,7 +67,7 @@ handle_event :: proc(b: ^Browser, event: ^sdl.Event, g: Geometry, running: ^bool
 		if cancelled {b.drag = {}; b.menu.active = false}
 		if event.type == .WINDOW_FOCUS_LOST {b.header.edit.dragging = false}
 		b.pointer.active = false
-		return hover_update(b, g) || cancelled || autoscroll_stopped
+		return hover_update(b, g) || cancelled || autoscroll_stopped || selection_cancelled
 	case .KEY_DOWN:
 		file_drag_cancel_press(b)
 		pointer_changed = b.drag.active
@@ -78,7 +81,7 @@ handle_event :: proc(b: ^Browser, event: ^sdl.Event, g: Geometry, running: ^bool
 	}
 	changed, err := handle_input(b, event, g, running)
 	if err != nil {browser_message(b, fmt.tprintf("cannot read folder: %v", err))}
-	return changed || pointer_changed || autoscroll_stopped
+	return changed || pointer_changed || autoscroll_stopped || selection_cancelled
 }
 
 selection_key :: proc(key: sdl.Keycode, selected, first: ^int, count, rows: int) -> bool {
@@ -272,7 +275,7 @@ handle_input :: proc(
 			return false, nil
 		}
 		index := row_at(g, y, b.first, len(b.visible))
-		if index < 0 {return false, nil}
+		if index < 0 {return selection_drag_begin(b, g, x, y), nil}
 		b.places.focused = false
 		mods := sdl.GetModState()
 		file_drag_press(b, index, event, mods)

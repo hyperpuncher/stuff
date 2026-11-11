@@ -338,6 +338,7 @@ layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.Ren
 			if free_space != "" {label(free_space, theme.muted, g.font_size)}
 		}
 	}
+	selection_drag_layout(b)
 	menu_layout(b, g, p)
 	file_dialog_layout(b, g, p)
 	return clay.EndLayout(0)

@@ -60,7 +60,7 @@ tab_switch :: proc(b: ^Browser, index: int, refresh := true) -> os.Error {
 	file_drag_cancel_press(b)
 	path_edit_end(&b.header.edit)
 	b.header.copied_until = 0
-	b.drag, b.autoscroll, b.menu = {}, {}, {}
+	b.drag, b.autoscroll, b.menu, b.selection_drag = {}, {}, {}, {}
 	b.pointer.active, b.places.focused = false, false
 	b.hovered = 0
 	b.tabs[b.active_tab] = b.view

@@ -457,6 +457,7 @@ paint_rounded_rectangle :: proc(
 }
 
 paint :: proc(p: ^Painter, commands: clay.ClayArray(clay.RenderCommand), width, height: i32) {
+	sdl_check(sdl.SetRenderDrawBlendMode(p.renderer, sdl.BLENDMODE_BLEND))
 	sdl_check(
 		sdl.SetRenderDrawColor(
 			p.renderer,

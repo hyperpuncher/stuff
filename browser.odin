@@ -61,6 +61,7 @@ Browser :: struct {
 	storage:                ^Storage,
 	pending_disk:           ^Disk_Operation, // Borrowed until the worker returns its result.
 	drag:                   Scroll_Drag,
+	selection_drag:         Selection_Drag,
 	autoscroll:             Auto_Scroll,
 	menu:                   Context_Menu,
 	transfers:              [dynamic]File_Transfer, // Jobs are borrowed until their results are applied.
@@ -164,6 +165,7 @@ browser_read :: proc(b: ^Browser, path: string) -> os.Error {
 }
 
 browser_filter :: proc(b: ^Browser, reset_selection := true) {
+	b.selection_drag = {}
 	query_runes := utf8.rune_count_in_string(b.search)
 	clear(&b.visible)
 	for entry, i in b.entries {

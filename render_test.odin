@@ -225,6 +225,7 @@ large_directory_layout :: proc(t: ^testing.T) {
 	verify_search_rendering(t, &p)
 	verify_tabs_layout(t, &p)
 	verify_file_progress_layout(t, &p)
+	verify_selection_drag_rendering(t, &p)
 
 	b: Browser
 	defer browser_destroy(&b)
