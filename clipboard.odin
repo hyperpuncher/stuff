@@ -20,7 +20,8 @@ file_uri_path :: proc(path: string, out: ^strings.Builder) {
 		   c == '-' ||
 		   c == '_' ||
 		   c == '.' ||
-		   c == '~' {
+		   c == '~' ||
+		   strings.index_byte("!$&'()*+,:=@", c) >= 0 {
 			strings.write_byte(out, c)
 		} else {
 			strings.write_byte(out, '%')
