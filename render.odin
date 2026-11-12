@@ -46,6 +46,9 @@ Icon :: enum {
 	ChevronRight,
 	SortAscending,
 	SortDescending,
+	Move,
+	MoveHorizontal,
+	MoveVertical,
 }
 
 ICON_SOURCES :: [Icon]string {
@@ -83,6 +86,9 @@ ICON_SOURCES :: [Icon]string {
 	.ChevronRight    = #load("vendor/lucide/chevron-right.svg"),
 	.SortAscending   = #load("vendor/lucide/chevron-up.svg"),
 	.SortDescending  = #load("vendor/lucide/chevron-down.svg"),
+	.Move            = #load("vendor/lucide/move.svg"),
+	.MoveHorizontal  = #load("vendor/lucide/move-horizontal.svg"),
+	.MoveVertical    = #load("vendor/lucide/move-vertical.svg"),
 }
 
 entry_icon :: proc(entry: os.File_Info) -> Icon {
@@ -249,6 +255,11 @@ icon_surface :: proc(kind: Icon, size: i32) -> ^sdl.Surface {
 	return image.LoadSizedSVG_IO(stream, size, size)
 }
 
+icon_color :: proc(kind: Icon) -> clay.Color {
+	if kind == .Move || kind == .MoveHorizontal || kind == .MoveVertical {return theme.background}
+	return theme.muted
+}
+
 painter_load_icons :: proc(p: ^Painter, scale: f32) {
 	for _, kind in ICON_SOURCES {
 		if p.icons[kind] != nil {sdl.DestroyTexture(p.icons[kind])}
@@ -257,14 +268,8 @@ painter_load_icons :: proc(p: ^Painter, scale: f32) {
 		defer sdl.DestroySurface(surface)
 		texture := sdl.CreateTextureFromSurface(p.renderer, surface)
 		assert(texture != nil, string(sdl.GetError()))
-		sdl_check(
-			sdl.SetTextureColorMod(
-				texture,
-				u8(theme.muted[0]),
-				u8(theme.muted[1]),
-				u8(theme.muted[2]),
-			),
-		)
+		color := icon_color(kind)
+		sdl_check(sdl.SetTextureColorMod(texture, u8(color[0]), u8(color[1]), u8(color[2])))
 		p.icons[kind] = texture
 	}
 }

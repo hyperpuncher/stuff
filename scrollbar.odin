@@ -5,11 +5,11 @@ import clay "vendor/clay"
 import sdl "vendor:sdl3"
 
 Auto_Scroll :: struct {
-	active, places:  bool,
-	x, y:            f32,
-	rate, remainder: f64,
-	tick, pressed:   u64,
-	folder:          int, // Entry index plus one; zero means no short-click target.
+	active, places:            bool,
+	x, y:                      f32,
+	rate_x, rate_y, remainder: f64,
+	tick, pressed:             u64,
+	folder:                    int, // Entry index plus one; zero means no short-click target.
 }
 
 autoscroll_begin :: proc(b: ^Browser, g: Geometry, x, y: f32) -> bool {
@@ -27,14 +27,14 @@ autoscroll_begin :: proc(b: ^Browser, g: Geometry, x, y: f32) -> bool {
 	b.pointer.active = false
 	b.hovered = 0
 	b.autoscroll = {
-		active = true,
 		places = places,
 		x      = x,
 		y      = y,
 		tick   = sdl.GetTicks(),
 	}
 	b.autoscroll.pressed = b.autoscroll.tick
-	b.autoscroll.active = scrollbar_for(b, g, places).max_first > 0
+	b.autoscroll.active =
+		scrollbar_for(b, g, places).max_first > 0 || !places && table_scroll_max(g) > 0
 	if !places && b.path != TRASH_PATH {
 		if row := row_at(g, y, b.first, len(b.visible)); row >= 0 {
 			source := b.visible[row]
@@ -47,36 +47,45 @@ autoscroll_begin :: proc(b: ^Browser, g: Geometry, x, y: f32) -> bool {
 autoscroll_motion :: proc(b: ^Browser, g: Geometry, x, y: f32) {
 	a := &b.autoscroll
 	if max(abs(x - a.x), abs(y - a.y)) >= 6 * g.scale {a.folder = 0}
-	delta := (y - a.y) / g.scale
+	rate := autoscroll_rate((y - a.y) / g.scale)
+	if rate == 0 || (rate < 0) != (a.rate_y < 0) {a.remainder = 0}
+	a.rate_y = rate
+	a.rate_x = a.places ? 0 : autoscroll_rate((x - a.x) / g.scale)
+}
+
+autoscroll_rate :: proc(delta: f32) -> f64 {
 	distance := max(abs(delta) - 12, 0)
 	rate := f64(min(distance * distance / 800, 120))
-	if delta < 0 {rate = -rate}
-	if rate == 0 || (rate < 0) != (a.rate < 0) {a.remainder = 0}
-	a.rate = rate
+	return delta < 0 ? -rate : rate
 }
 
 autoscroll_update :: proc(b: ^Browser, g: Geometry, now: u64) -> bool {
 	a := &b.autoscroll
 	if !a.active {return false}
 	last := scrollbar_for(b, g, a.places).max_first
-	if last <= 0 {a^ = {}; return true}
+	max_x := a.places ? 0 : table_scroll_max(g)
+	if last <= 0 && max_x <= 0 {a^ = {}; return true}
 	first := a.places ? &b.places.first : &b.first
-	if a.rate < 0 && first^ <= 0 || a.rate > 0 && first^ >= last {
-		a.rate, a.remainder = 0, 0
+	if last <= 0 || a.rate_y < 0 && first^ <= 0 || a.rate_y > 0 && first^ >= last {
+		a.rate_y, a.remainder = 0, 0
 	}
+	x := table_scroll_offset(b, g)
+	if max_x <= 0 || a.rate_x < 0 && x <= 0 || a.rate_x > 0 && x >= max_x {a.rate_x = 0}
 	// Use elapsed time, but do not jump after a stalled frame.
-	a.remainder += a.rate * f64(min(now - a.tick, 100)) / 1000
+	elapsed := f64(min(now - a.tick, 100)) / 1000
+	a.remainder += a.rate_y * elapsed
 	a.tick = now
 	rows := int(a.remainder)
 	a.remainder -= f64(rows)
 	previous := first^
 	first^ = clamp(first^ + rows, 0, last)
-	return first^ != previous
+	horizontal := a.rate_x != 0 && table_scroll_by(b, g, f32(a.rate_x * f64(g.row) * elapsed))
+	return first^ != previous || horizontal
 }
 
 Scroll_Drag :: struct {
-	active, places: bool,
-	grab:           f32,
+	active, places, horizontal: bool,
+	grab:                       f32,
 }
 
 Scrollbar :: struct {
@@ -118,11 +127,18 @@ scrollbar_hit :: proc(b: ^Browser, g: Geometry, x, y: f32) -> (places: bool, hit
 		y < box.y + box.height
 }
 
-scrollbar_motion :: proc(b: ^Browser, g: Geometry, y: f32) -> bool {
+scrollbar_motion :: proc(b: ^Browser, g: Geometry, x, y: f32) -> bool {
 	if !b.drag.active {return false}
+	if b.drag.horizontal {
+		bar := table_scrollbar(b, g)
+		travel := bar.track.width - bar.thumb.width
+		if travel <= 0 {b.drag = {}; return false}
+		fraction := clamp((x - bar.track.x - b.drag.grab) / travel, 0, 1)
+		return table_scroll_by(b, g, fraction * table_scroll_max(g) - table_scroll_offset(b, g))
+	}
 	bar := scrollbar_for(b, g, b.drag.places)
 	travel := bar.track.height - bar.thumb.height
-	if travel <= 0 {b.drag.active = false; return false}
+	if travel <= 0 {b.drag = {}; return false}
 	fraction := clamp((y - bar.track.y - b.drag.grab) / travel, 0, 1)
 	first := int(math.round(fraction * f32(bar.max_first)))
 	offset := &b.first
@@ -142,10 +158,10 @@ scrollbar_press :: proc(b: ^Browser, g: Geometry, places: bool, y: f32) {
 		places = places,
 		grab   = grab,
 	}
-	_ = scrollbar_motion(b, g, y)
+	_ = scrollbar_motion(b, g, 0, y)
 }
 
-scrollbar_layout :: proc(b: ^Browser, g: Geometry, places: bool) {
+scrollbar_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter, places: bool) {
 	if a := b.autoscroll; a.active && a.places == places {
 		size := 24 * g.scale
 		if clay.UI(clay.ID("autoscroll"))(
@@ -163,25 +179,101 @@ scrollbar_layout :: proc(b: ^Browser, g: Geometry, places: bool) {
 			backgroundColor = theme.text,
 			cornerRadius = clay.CornerRadiusAll(size / 2),
 		},
-		) {label("↕", theme.background, g.font_size)}
+		) {
+			marker: Icon = .MoveVertical
+			if !places && table_scroll_max(g) > 0 {
+				marker = scrollbar_for(b, g, places).max_first > 0 ? .Move : .MoveHorizontal
+			}
+			icon_element(p, marker, g.scale)
+		}
 	}
 	bar := scrollbar_for(b, g, places)
 	if bar.track.height <= 0 {return}
-	id := scrollbar_id(places)
-	color := theme.muted
-	if b.hovered == id.id || (b.drag.active && b.drag.places == places) {color = theme.text}
-	width := 3 * g.scale
+	thumb := bar.thumb
+	thumb.x += thumb.width - 3 * g.scale
+	thumb.width = 3 * g.scale
+	scrollbar_thumb_layout(
+		b,
+		scrollbar_id(places),
+		thumb,
+		b.drag.active && !b.drag.horizontal && b.drag.places == places,
+	)
+}
+
+scrollbar_thumb_layout :: proc(
+	b: ^Browser,
+	id: clay.ElementId,
+	box: clay.BoundingBox,
+	dragging: bool,
+) {
+	color := b.hovered == id.id || dragging ? theme.text : theme.muted
 	if clay.UI(id)(
 	{
-		layout = {sizing = {clay.SizingFixed(width), clay.SizingFixed(bar.thumb.height)}},
+		layout = {sizing = {clay.SizingFixed(box.width), clay.SizingFixed(box.height)}},
 		floating = {
 			attachTo = .Root,
-			offset = {bar.thumb.x + bar.thumb.width - width, bar.thumb.y},
+			offset = {box.x, box.y},
 			zIndex = 1,
 			pointerCaptureMode = .Passthrough,
 		},
 		backgroundColor = color,
-		cornerRadius = clay.CornerRadiusAll(width / 2),
+		cornerRadius = clay.CornerRadiusAll(min(box.width, box.height) / 2),
 	},
 	) {}
+}
+
+table_scrollbar :: proc(b: ^Browser, g: Geometry) -> Scrollbar {
+	track := clay.BoundingBox {
+		g.sidebar + g.padding,
+		g.height - g.footer - g.horizontal_bar,
+		g.width - g.sidebar - 2 * g.padding,
+		g.horizontal_bar,
+	}
+	if track.height <= 0 || track.width <= 0 {return {}}
+	thumb := track
+	thumb.width = min(
+		track.width,
+		max(24 * g.scale, track.width * (g.width - g.sidebar) / g.table_width),
+	)
+	thumb.x += table_scroll_offset(b, g) / table_scroll_max(g) * (track.width - thumb.width)
+	return {track = track, thumb = thumb}
+}
+
+table_scrollbar_hit :: proc(b: ^Browser, g: Geometry, x, y: f32) -> bool {
+	box := table_scrollbar(b, g).track
+	return(
+		box.width > 0 &&
+		x >= box.x &&
+		x < box.x + box.width &&
+		y >= box.y &&
+		y < box.y + box.height \
+	)
+}
+
+table_scrollbar_press :: proc(b: ^Browser, g: Geometry, x, y: f32) {
+	bar := table_scrollbar(b, g)
+	grab := bar.thumb.width / 2
+	if x >= bar.thumb.x && x < bar.thumb.x + bar.thumb.width {grab = x - bar.thumb.x}
+	file_drag_cancel_press(b)
+	b.places.focused = false
+	b.drag = {
+		active     = true,
+		horizontal = true,
+		grab       = grab,
+	}
+	_ = scrollbar_motion(b, g, x, y)
+}
+
+table_scrollbar_layout :: proc(b: ^Browser, g: Geometry) {
+	bar := table_scrollbar(b, g)
+	if bar.track.width <= 0 {return}
+	thumb := bar.thumb
+	thumb.y += (thumb.height - 3 * g.scale) / 2
+	thumb.height = 3 * g.scale
+	scrollbar_thumb_layout(
+		b,
+		clay.ID("table-scrollbar"),
+		thumb,
+		b.drag.active && b.drag.horizontal,
+	)
 }

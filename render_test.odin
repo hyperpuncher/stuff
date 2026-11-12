@@ -280,6 +280,7 @@ large_directory_layout :: proc(t: ^testing.T) {
 	_ = handle_event(&b, &event, g, &running)
 	paint(&p, layout(&b, g, &p), 960, 640)
 	testing.expect(t, !clay.GetElementData(clay.ID("autoscroll")).found)
+	verify_autoscroll_icons(t, &p)
 
 	// Names must not overlap the metadata columns, even in a narrow or tall window.
 	sizes := [?][2]i32{{MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT}, {960, 4096}, {1920, 1080}}
@@ -322,6 +323,8 @@ large_directory_layout :: proc(t: ^testing.T) {
 		scale:         f32,
 	} {
 		{960, 640, 1},
+		{600, 480, 1},
+		{900, 720, 1.5},
 		{1200, 800, 1.25},
 		{1892, 1080, 1.5},
 		{2 * MIN_WINDOW_WIDTH, 480, 2},
@@ -330,11 +333,28 @@ large_directory_layout :: proc(t: ^testing.T) {
 	for viewport in viewports {
 		g = geometry(viewport.width, viewport.height, viewport.scale)
 		positions := [?]int{0, 50_000, len(b.visible) - g.rows}
-		for first in positions {
+		for first, step in positions {
 			b.first = first
+			b.scroll_x = step == 1 ? table_scroll_max(g) / g.scale : 0
 			places_g := places_geometry(g)
 			b.places.first = min(first, max(0, len(b.places.entries) - places_g.rows))
 			_ = layout(&b, g, &p)
+			heading := clay.GetElementData(clay.ID("column", u32(Column.Name))).boundingBox
+			row := clay.GetElementData(clay.ID("row", u32(b.visible[b.first]))).boundingBox
+			testing.expect(t, heading.width >= 200 * g.scale)
+			testing.expect_value(t, heading.x, g.sidebar + g.padding - table_scroll_offset(&b, g))
+			testing.expect_value(t, row.x + g.padding, heading.x)
+			testing.expect_value(t, row.width, g.table_width)
+			bar := clay.GetElementData(clay.ID("table-scrollbar"))
+			testing.expect_value(t, bar.found, table_scroll_max(g) > 0)
+			if bar.found {
+				testing.expect(t, bar.boundingBox.x >= g.sidebar)
+				testing.expect(t, bar.boundingBox.y >= list_bottom(g))
+				testing.expect(
+					t,
+					bar.boundingBox.y + bar.boundingBox.height <= g.height - g.footer,
+				)
+			}
 			footer := clay.GetElementData(clay.ID("footer"))
 			list := clay.GetElementData(clay.ID("files-viewport"))
 			places := clay.GetElementData(clay.ID("places-viewport"))
@@ -344,7 +364,14 @@ large_directory_layout :: proc(t: ^testing.T) {
 			testing.expect_value(t, list.boundingBox.y, g.list_top)
 			testing.expect_value(t, list.boundingBox.height, list_bottom(g) - g.list_top)
 			testing.expect_value(t, places.boundingBox.y, places_g.list_top)
-			testing.expect_value(t, places.boundingBox.height, list_bottom(g) - places_g.list_top)
+			testing.expect_value(
+				t,
+				places.boundingBox.height,
+				list_bottom(places_g) - places_g.list_top,
+			)
 		}
 	}
+	b.scroll_x = 200
+	_ = layout(&b, geometry(1280, 640, 1), &p)
+	testing.expect_value(t, b.scroll_x, f32(0))
 }

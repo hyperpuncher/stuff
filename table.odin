@@ -13,7 +13,7 @@ Geometry :: struct {
 	width, height, scale, tabs, header, footer, row, list_top: f32,
 	padding, gap, sidebar, list_padding, font_size:            f32,
 	columns:                                                   [Column]f32,
-	row_gap, transfers:                                        f32,
+	row_gap, transfers, table_width, horizontal_bar:           f32,
 	rows:                                                      int,
 }
 
@@ -48,21 +48,38 @@ geometry :: proc(
 	for width, column in g.columns {
 		if column != .Name {name_width -= width + g.gap}
 	}
-	g.columns[.Name] = max(0, name_width)
-	g.rows = max(1, int((g.height - g.list_top - g.footer - g.list_padding) / g.row))
+	g.columns[.Name] = max(200 * scale, name_width)
+	g.table_width = g.width - g.sidebar + (g.columns[.Name] - name_width)
+	if table_scroll_max(g) > 0 {g.horizontal_bar = 12 * scale}
+	g.rows = max(1, int((list_bottom(g) - g.list_top) / g.row))
 	return g
 }
 
 list_layout :: proc(g: Geometry) -> clay.LayoutConfig {
 	return {
 		sizing = {clay.SizingGrow(), clay.SizingGrow()},
-		padding = {top = u16(g.list_padding), bottom = u16(g.list_padding)},
+		padding = {top = u16(g.list_padding), bottom = u16(g.list_padding + g.horizontal_bar)},
 		layoutDirection = .TopToBottom,
 	}
 }
 
-column_at :: proc(g: Geometry, x: f32) -> (Column, bool) {
-	left := g.sidebar + g.padding
+table_scroll_max :: proc(g: Geometry) -> f32 {
+	return max(0, g.table_width - (g.width - g.sidebar))
+}
+
+table_scroll_offset :: proc(b: ^Browser, g: Geometry) -> f32 {
+	return clamp(b.scroll_x * g.scale, 0, table_scroll_max(g))
+}
+
+table_scroll_by :: proc(b: ^Browser, g: Geometry, pixels: f32) -> bool {
+	previous := b.scroll_x
+	b.scroll_x = clamp(b.scroll_x + pixels / g.scale, 0, table_scroll_max(g) / g.scale)
+	return b.scroll_x != previous
+}
+
+column_at :: proc(g: Geometry, x: f32, offset: f32 = 0) -> (Column, bool) {
+	if x < g.sidebar || x >= g.width {return .Name, false}
+	left := g.sidebar + g.padding - offset
 	for width, column in g.columns {
 		if x >= left && x < left + width {return column, true}
 		left += width + g.gap
@@ -70,7 +87,9 @@ column_at :: proc(g: Geometry, x: f32) -> (Column, bool) {
 	return .Name, false
 }
 
-list_bottom :: proc(g: Geometry) -> f32 {return g.height - g.footer - g.list_padding}
+list_bottom :: proc(g: Geometry) -> f32 {
+	return g.height - g.footer - g.list_padding - g.horizontal_bar
+}
 
 viewport_config :: proc() -> clay.ElementDeclaration {
 	return {
@@ -156,27 +175,38 @@ format_modified :: proc(stamp: time.Time) -> string {
 }
 
 table_header :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
-	if clay.UI()({layout = row_layout(g), backgroundColor = theme.panel}) {
-		names := [Column]string {
-			.Name     = "name",
-			.Size     = "size",
-			.Type     = "type",
-			.Modified = "modified",
-		}
-		for name, column in names {
-			id := clay.ID("column", u32(column))
-			if clay.UI(id)({layout = column_layout(g, column)}) {
-				if column == .Name {
-					// Align the heading with filenames, after the file icon.
-					if clay.UI()({layout = {sizing = {width = clay.SizingFixed(18 * g.scale)}}}) {}
-				}
-				color := theme.muted
-				if column == b.sort_column || b.hovered == id.id {color = theme.text}
-				label(name, color, g.font_size)
-				if column == b.sort_column {
-					kind: Icon = .SortAscending
-					if b.descending {kind = .SortDescending}
-					icon_element(p, kind, g.scale)
+	if clay.UI()(
+	{
+		layout = {sizing = {clay.SizingGrow(), clay.SizingFixed(g.row)}},
+		clip = {horizontal = true, childOffset = {-table_scroll_offset(b, g), 0}},
+	},
+	) {
+		header := row_layout(g)
+		header.sizing.width = clay.SizingFixed(g.table_width)
+		if clay.UI()({layout = header, backgroundColor = theme.panel}) {
+			names := [Column]string {
+				.Name     = "name",
+				.Size     = "size",
+				.Type     = "type",
+				.Modified = "modified",
+			}
+			for name, column in names {
+				id := clay.ID("column", u32(column))
+				if clay.UI(id)({layout = column_layout(g, column)}) {
+					if column == .Name {
+						// Align the heading with filenames, after the file icon.
+						if clay.UI()(
+						{layout = {sizing = {width = clay.SizingFixed(18 * g.scale)}}},
+						) {}
+					}
+					color := theme.muted
+					if column == b.sort_column || b.hovered == id.id {color = theme.text}
+					label(name, color, g.font_size)
+					if column == b.sort_column {
+						kind: Icon = .SortAscending
+						if b.descending {kind = .SortDescending}
+						icon_element(p, kind, g.scale)
+					}
 				}
 			}
 		}
@@ -202,7 +232,7 @@ table_row :: proc(b: ^Browser, index: int, g: Geometry, p: ^Painter) {
 	if clay.UI(clay.ID("row", u32(source)))(
 	{
 		layout = {
-			sizing = {clay.SizingGrow(), clay.SizingFixed(g.row)},
+			sizing = {clay.SizingFixed(g.table_width), clay.SizingFixed(g.row)},
 			padding = {
 				left = inset,
 				right = right_inset,
@@ -265,6 +295,7 @@ table_row :: proc(b: ^Browser, index: int, g: Geometry, p: ^Painter) {
 }
 
 layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.RenderCommand) {
+	b.scroll_x = table_scroll_offset(b, g) / g.scale
 	b.first = clamp(b.first, 0, max(0, len(b.visible) - g.rows))
 	b.places.first = clamp(
 		b.places.first,
@@ -300,7 +331,9 @@ layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.Ren
 					cornerRadius = {topLeft = 10 * g.scale, bottomLeft = 10 * g.scale},
 				},
 				) {
-					if clay.UI(clay.ID("files-viewport"))(viewport_config()) {
+					viewport := viewport_config()
+					viewport.clip.childOffset.x = -table_scroll_offset(b, g)
+					if clay.UI(clay.ID("files-viewport"))(viewport) {
 						if len(b.visible) == 0 {
 							message :=
 								b.path == TRASH_PATH ? "trash is empty" : "this folder is empty"
@@ -316,8 +349,9 @@ layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.Ren
 				}
 			}
 		}
-		scrollbar_layout(b, g, false)
-		scrollbar_layout(b, g, true)
+		scrollbar_layout(b, g, p, false)
+		scrollbar_layout(b, g, p, true)
+		table_scrollbar_layout(b, g)
 		if clay.UI(clay.ID("footer"))(
 		{
 			layout = {

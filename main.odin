@@ -60,7 +60,7 @@ handle_event :: proc(b: ^Browser, event: ^sdl.Event, g: Geometry, running: ^bool
 		if b.menu.active {b.menu.selected = -1}
 		changed := pointer_move(b, g, event.motion.x, event.motion.y)
 		if b.header.edit.dragging {path_edit_click(&b.header.edit, g, event.motion.x, true); return true}
-		return scrollbar_motion(b, g, event.motion.y) || changed || menu_changed
+		return scrollbar_motion(b, g, event.motion.x, event.motion.y) || changed || menu_changed
 	case .WINDOW_MOUSE_LEAVE, .WINDOW_FOCUS_LOST:
 		if event.type == .WINDOW_FOCUS_LOST {file_drag_cancel_press(b)}
 		cancelled := event.type == .WINDOW_FOCUS_LOST && (b.drag.active || b.menu.active)
@@ -219,21 +219,30 @@ handle_input :: proc(
 		if event.button.button == sdl.BUTTON_LEFT && b.drag.active {b.drag = {}; return true, nil}
 		return false, nil
 	case .MOUSE_WHEEL:
+		changed = b.drag.active
 		b.drag = {}
-		amount := event.wheel.y
-		if event.wheel.direction == .FLIPPED {amount = -amount}
+		dx, dy := event.wheel.x, event.wheel.y
+		if event.wheel.direction == .FLIPPED {dx, dy = -dx, -dy}
 		x, y := event.wheel.mouse_x, event.wheel.mouse_y
-		if x < 0 || x >= g.width || y < g.header || y >= g.height - g.footer {return false, nil}
+		if x < 0 || x >= g.width || y < g.header || y >= g.height - g.footer {return changed, nil}
 		if x < g.sidebar {
 			b.places.first = clamp(
-				b.places.first - int(amount * 3),
+				b.places.first - int(dy * 3),
 				0,
 				max(0, len(b.places.entries) - places_geometry(g).rows),
 			)
-		} else {
-			b.first = clamp(b.first - int(amount * 3), 0, max(0, len(b.visible) - g.rows))
+			return true, nil
 		}
-		return true, nil
+		if sdl.GetModState() & sdl.KMOD_SHIFT != {} {
+			if dx == 0 {dx = -dy}
+			dy = 0
+		}
+		if dx != 0 {changed = table_scroll_by(b, g, dx * 3 * g.row) || changed}
+		if dy != 0 {
+			b.first = clamp(b.first - int(dy * 3), 0, max(0, len(b.visible) - g.rows))
+			changed = true
+		}
+		return changed, nil
 	case .MOUSE_BUTTON_DOWN:
 		switch event.button.button {
 		case sdl.BUTTON_X1:
@@ -253,6 +262,10 @@ handle_input :: proc(
 		x, y := event.button.x, event.button.y
 		if x < 0 || x >= g.width {return false, nil}
 		if y >= 0 && y < g.header {return header_click(b, x, y)}
+		if table_scrollbar_hit(b, g, x, y) {
+			table_scrollbar_press(b, g, x, y)
+			return true, nil
+		}
 		if places, hit := scrollbar_hit(b, g, x, y); hit {
 			scrollbar_press(b, g, places, y)
 			return true, nil
@@ -267,7 +280,7 @@ handle_input :: proc(
 			return true, place_open(b, index, unmount)
 		}
 		if y >= g.header && y < g.header + g.row {
-			if column, ok := column_at(g, x); ok {
+			if column, ok := column_at(g, x, table_scroll_offset(b, g)); ok {
 				b.places.focused = false
 				browser_set_sort(b, column)
 				return true, nil
@@ -290,7 +303,7 @@ handle_input :: proc(
 ui_wait_timeout :: proc(b: ^Browser, now: u64) -> i32 {
 	timeout := i32(-1)
 	if len(b.opens) > 0 {timeout = 100}
-	if b.autoscroll.active && b.autoscroll.rate != 0 {timeout = 16}
+	if b.autoscroll.active && (b.autoscroll.rate_x != 0 || b.autoscroll.rate_y != 0) {timeout = 16}
 	for deadline in ([2]u64{b.header.copied_until, b.status_until}) {
 		if deadline == 0 {continue}
 		remaining := deadline > now ? i32(deadline - now) : 0

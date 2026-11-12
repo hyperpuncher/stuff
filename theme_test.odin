@@ -44,9 +44,13 @@ verify_theme_switch :: proc(t: ^testing.T, p: ^Painter) {
 			testing.expect_value(t, icon, icons[kind])
 			r, green, blue: u8
 			sdl_check(sdl.GetTextureColorMod(icon, &r, &green, &blue))
-			testing.expect_value(t, r, u8(item.expected.muted[0]))
-			testing.expect_value(t, green, u8(item.expected.muted[1]))
-			testing.expect_value(t, blue, u8(item.expected.muted[2]))
+			color := item.expected.muted
+			if kind == .Move ||
+			   kind == .MoveHorizontal ||
+			   kind == .MoveVertical {color = item.expected.background}
+			testing.expect_value(t, r, u8(color[0]))
+			testing.expect_value(t, green, u8(color[1]))
+			testing.expect_value(t, blue, u8(color[2]))
 		}
 		pixels := [?]struct {
 			x, y:  i32,

@@ -28,9 +28,10 @@ tabs_preserve_views_and_refresh_changed_entries :: proc(t: ^testing.T) {
 	search_blur(&b.header.edit)
 	selection_single(&b, 2)
 	selection_click(&b, 4, true, false)
-	b.first = 3
+	b.first, b.scroll_x = 3, 64
 	testing.expect(t, tab_open(&b, two) == nil)
 	testing.expect_value(t, b.path, two)
+	testing.expect_value(t, b.scroll_x, f32(0))
 	testing.expect_value(t, b.search, "")
 	testing.expect_value(t, len(b.back), 0)
 	// Inserting an earlier name changes entry and row indices in the saved tab.
@@ -42,12 +43,14 @@ tabs_preserve_views_and_refresh_changed_entries :: proc(t: ^testing.T) {
 	testing.expect(t, !b.header.edit.active)
 	testing.expect_value(t, b.entries[b.visible[b.selected]].name, "item-04")
 	testing.expect_value(t, b.first, 3)
+	testing.expect_value(t, b.scroll_x, f32(64))
 	testing.expect_value(t, len(b.marks), 2)
 	testing.expect_value(t, b.marked_bytes, i64(8))
 	for source in b.marks {testing.expect(t, b.entries[source].name == "item-02" || b.entries[source].name == "item-04")}
 	testing.expect_value(t, len(b.back), 1)
 	testing.expect(t, browser_history(&b, true) == nil)
 	testing.expect_value(t, b.path, root)
+	testing.expect_value(t, b.scroll_x, f32(0))
 	testing.expect(t, tab_switch(&b, 1) == nil)
 	testing.expect_value(t, b.path, two)
 	testing.expect_value(t, len(b.back), 0)

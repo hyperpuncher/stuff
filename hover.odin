@@ -27,6 +27,7 @@ hover_target :: proc(b: ^Browser, g: Geometry) -> u32 {
 		return 0
 	}
 	if y < g.header {return header_target(&b.header, x, y)}
+	if table_scrollbar_hit(b, g, x, y) {return clay.ID("table-scrollbar").id}
 	if places, hit := scrollbar_hit(b, g, x, y); hit {return scrollbar_id(places).id}
 	if x < g.sidebar {
 		index := row_at(places_geometry(g), y, b.places.first, len(b.places.entries))
@@ -38,7 +39,8 @@ hover_target :: proc(b: ^Browser, g: Geometry) -> u32 {
 		return 0
 	}
 	if y < g.header + g.row {
-		if column, ok := column_at(g, x); ok {return clay.ID("column", u32(column)).id}
+		if column, ok := column_at(g, x, table_scroll_offset(b, g));
+		   ok {return clay.ID("column", u32(column)).id}
 		return 0
 	}
 	index := row_at(g, y, b.first, len(b.visible))
@@ -75,6 +77,7 @@ pointer_cursor :: proc(b: ^Browser, g: Geometry) -> sdl.SystemCursor {
 	   edit_is_dialog(b.header.edit.mode) {return b.hovered != 0 ? .POINTER : .DEFAULT}
 	if b.menu.active {return b.hovered != 0 ? .POINTER : .DEFAULT}
 	if b.drag.active ||
+	   b.hovered == clay.ID("table-scrollbar").id ||
 	   b.hovered == scrollbar_id(false).id ||
 	   b.hovered == scrollbar_id(true).id {return .DEFAULT}
 	if b.pointer.active &&

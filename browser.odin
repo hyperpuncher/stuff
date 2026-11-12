@@ -28,6 +28,7 @@ Folder_View :: struct {
 	entries:                 []os.File_Info,
 	visible:                 [dynamic]int,
 	selected, first, anchor: int,
+	scroll_x:                f32, // Horizontal table offset in logical pixels.
 	marks:                   map[int]bool,
 	marked_bytes:            i64,
 	show_hidden:             bool,
@@ -130,6 +131,7 @@ browser_read :: proc(b: ^Browser, path: string) -> os.Error {
 		b.entries, b.trash_records = nil, nil
 		delete(b.path)
 		b.path, b.space, b.drag = strings.clone(TRASH_PATH), {}, {}
+		b.scroll_x = 0
 		b.menu.active = false
 		browser_filter(b)
 		browser_message(b, "")
@@ -146,6 +148,7 @@ browser_read :: proc(b: ^Browser, path: string) -> os.Error {
 		search_reset(b)
 		b.header.copied_until = 0
 		b.drag = {}
+		b.scroll_x = 0
 	}
 	// Keep free space visible during navigation within the same filesystem.
 	info: linux.Stat
