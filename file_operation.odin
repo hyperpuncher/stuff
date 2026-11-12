@@ -219,7 +219,17 @@ file_operation_apply :: proc(b: ^Browser, op: ^File_Operation) -> bool {
 		)
 		return true
 	}
-	if op.kind == .Empty_Trash {size_cache_clear(b)} else {
+	if op.kind == .Empty_Trash {
+		if len(op.applied) > 0 {
+			generation := b.size_generation
+			size_cancel(b)
+			// Keep unrelated completed totals from being queued again.
+			for _, &cached in b.sizes {
+				if cached.state != .Pending &&
+				   cached.request == generation {cached.request = b.size_generation}
+			}
+		}
+	} else {
 		size_cancel(b)
 		size_cache_invalidate(b, op.target, descendants = false)
 		size_cache_invalidate(b, op.destination)

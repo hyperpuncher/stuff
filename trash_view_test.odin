@@ -155,7 +155,7 @@ local_trash_view_uses_relative_metadata_without_creating_directories :: proc(t: 
 }
 
 @(test)
-trash_scan_skips_protected_optional_mounts_but_reports_home_errors :: proc(t: ^testing.T) {
+trash_roots_skip_protected_mounts_but_report_real_errors :: proc(t: ^testing.T) {
 	if linux.getuid() == 0 {return}
 	root, err := os.make_directory_temp("/tmp", "stuff-protected-trash-", context.allocator)
 	if err != nil {testing.fail_now(t, "cannot create protected mount fixture")}
@@ -175,5 +175,21 @@ trash_scan_skips_protected_optional_mounts_but_reports_home_errors :: proc(t: ^t
 		os.Error(.Unsupported),
 	)
 	testing.expect(t, trash_read_root(op, path, root, false, false, &seen) != nil)
-	testing.expect_value(t, len(op.listed), 0)
+	// Emptying uses the same optional-root rule, but home errors still count.
+	err = trash_empty_root(op, path, false, local = true)
+	trash_root_error(op, path, err, true)
+	testing.expect_value(t, op.failed, 0)
+	err = trash_empty_root(op, path, false)
+	trash_root_error(op, path, err, false)
+	testing.expect_value(t, op.failed, 1)
+	// Do not hide a deletion error inside an accessible, owned trash root.
+	testing.expect(t, os.chmod(root, os.perm(0o700)) == nil)
+	files := fmt.aprintf("%s/files", path)
+	defer delete(files)
+	testing.expect(t, os.make_directory_all(files) == nil)
+	testing.expect(t, os.chmod(files, os.perm(0)) == nil)
+	defer os.chmod(files, os.perm(0o700))
+	err = trash_empty_root(op, path, false, local = true)
+	trash_root_error(op, path, err, true)
+	testing.expect_value(t, op.failed, 2)
 }

@@ -61,11 +61,7 @@ trash_read_root :: proc(
 	local, shared: bool,
 	seen: ^map[[2]u64]bool,
 ) -> os.Error {
-	trash, open_err := trash_root_open(root, shared)
-	if open_err != .NONE {
-		if local && (open_err == .EACCES || open_err == .EPERM) {return .Unsupported}
-		return open_err
-	}
+	trash := trash_root_open(root, shared, local) or_return
 	defer linux.close(trash)
 	st: linux.Stat
 	if err := linux.fstat(trash, &st); err != .NONE {return err}

@@ -56,7 +56,13 @@ trash_root_error :: proc(op: ^File_Operation, root: string, err: os.Error, local
 }
 
 // Opens a private trash root, or the user's subdirectory of a shared .Trash.
-trash_root_open :: proc(root: string, shared: bool) -> (linux.Fd, os.Error) {
+trash_root_open :: proc(root: string, shared: bool, local := false) -> (linux.Fd, os.Error) {
+	fd, err := trash_root_open_private(root, shared)
+	if local && (err == linux.Errno.EACCES || err == linux.Errno.EPERM) {return -1, .Unsupported}
+	return fd, err
+}
+
+trash_root_open_private :: proc(root: string, shared: bool) -> (linux.Fd, os.Error) {
 	parent, name := os.split_path(root)
 	parent_c := strings.clone_to_cstring(parent)
 	defer delete(parent_c)

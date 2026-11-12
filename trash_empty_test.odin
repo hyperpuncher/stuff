@@ -40,11 +40,34 @@ empty_trash_removes_contents_without_following_links :: proc(t: ^testing.T) {
 		os.write_entire_file(fmt.tprintf("%s/info/stale.trashinfo", home), "stale") == nil,
 	)
 
-	op: File_Operation
+	sibling := fmt.tprintf("%s/kept", root)
+	testing.expect(t, os.make_directory(sibling) == nil)
+	testing.expect(t, os.write_entire_file(fmt.tprintf("%s/child", sibling), "keep") == nil)
+	b: Browser
+	defer browser_destroy(&b)
+	testing.expect(t, browser_load(&b, root) == nil)
+	for path in ([?]string{root, fmt.tprintf("%s/data", root), home, sibling}) {
+		b.sizes[strings.clone(path)] = {
+			state   = .Known,
+			bytes   = 4,
+			request = b.size_generation,
+		}
+	}
+	op := File_Operation {
+		kind   = .Empty_Trash,
+		target = TRASH_PATH,
+	}
+	defer file_changes_destroy(op.applied)
+	defer delete(op.error)
 	testing.expect(t, trash_empty_root(&op, home, false) == nil)
 	testing.expect_value(t, op.failed, 0)
 	testing.expect_value(t, trash_test_count(t, fmt.tprintf("%s/files", home)), 0)
 	testing.expect_value(t, trash_test_count(t, fmt.tprintf("%s/info", home)), 0)
+	append(&b.transfers, File_Transfer{op = &op})
+	testing.expect(t, file_operation_apply(&b, &op))
+	testing.expect_value(t, len(b.sizes), 1)
+	testing.expect_value(t, size_value(&b, {type = .Directory, fullpath = sibling}), i64(4))
+	testing.expect_value(t, b.sizes[sibling].request, b.size_generation)
 	content, read_err := os.read_entire_file(outside, context.allocator)
 	defer delete(content)
 	testing.expect(t, read_err == nil && string(content) == "keep")

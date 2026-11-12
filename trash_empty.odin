@@ -15,16 +15,23 @@ trash_empty_run :: proc(op: ^File_Operation) {
 	defer trash_roots_destroy(&roots)
 	for root in roots {
 		if sync.atomic_load(&op.cancel) {return}
-		err = trash_empty_root(op, root.root, root.shared)
+		err = trash_empty_root(op, root.root, root.shared, root.local)
 		trash_root_error(op, root.root, err, root.local)
 		free_all(context.temp_allocator)
 	}
 }
 
-trash_empty_root :: proc(op: ^File_Operation, root: string, shared: bool) -> os.Error {
-	trash := trash_root_open(root, shared) or_return
+trash_empty_root :: proc(
+	op: ^File_Operation,
+	root: string,
+	shared: bool,
+	local := false,
+) -> os.Error {
+	trash := trash_root_open(root, shared, local) or_return
 	defer linux.close(trash)
 	files := trash_private_open_at(trash, "files") or_return
+	// Invalidate this tree even if deletion later fails or is cancelled.
+	append(&op.applied, File_Change{path = strings.clone(root)})
 	if err := trash_remove_children(op, files); err != nil {return err}
 	infos, info_err := trash_private_open_at(trash, "info")
 	if info_err == .NONE {
