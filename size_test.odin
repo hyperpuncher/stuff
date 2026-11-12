@@ -109,15 +109,18 @@ directory_sizes_keep_cached_totals_on_reopen_and_reject_old_results :: proc(t: ^
 	testing.expect(t, browser_load(&b, fmt.tprintf("%s/0", root)) == nil)
 	testing.expect(t, browser_load(&b, root) == nil)
 	// A result already queued before reload must not restore the stale total.
-	size_publish(
-		b.size_service,
-		{
-			path = strings.clone(fmt.tprintf("%s/0", root)),
-			bytes = 4,
-			generation = old_generation,
-			ok = true,
-		},
-	)
+	{
+		sync.mutex_guard(&b.size_service.mutex)
+		append(
+			&b.size_service.results,
+			Size_Result {
+				path = strings.clone(fmt.tprintf("%s/0", root)),
+				bytes = 4,
+				generation = old_generation,
+				ok = true,
+			},
+		)
+	}
 	testing.expect(t, !size_poll(&b))
 	testing.expect_value(t, len(b.sizes), 3)
 	cached := b.sizes[fmt.tprintf("%s/0", root)]
@@ -410,12 +413,15 @@ directory_size_child_results_respect_cache_limit_and_explicit_refreshes :: proc(
 		{path = strings.clone("/cached/0"), bytes = 42, ok = false},
 	}
 	defer for child in children {delete(child.path)}
-	pointers := [3]^Size_Child{&children[0], &children[1], &children[2]}
-	size_publish(
-		b.size_service,
-		{path = strings.clone("/parent"), generation = b.size_generation, ok = true},
-		pointers[:],
-	)
+	scan := Size_Scan {
+		service    = b.size_service,
+		path       = strings.clone("/parent"),
+		generation = b.size_generation,
+		ok         = true,
+	}
+	defer delete(scan.children)
+	for &child in children {append(&scan.children, &child)}
+	size_publish(&scan)
 	_ = size_poll(&b)
 	testing.expect_value(t, len(b.sizes), SIZE_CACHE_LIMIT)
 	testing.expect(t, "/extra" not_in b.sizes)

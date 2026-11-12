@@ -32,26 +32,10 @@ tab_refresh :: proc(b: ^Browser) -> os.Error {
 		if !trash_view_request(b) {return .Unsupported}
 		return nil
 	}
-	location, cursor := browser_location(b), b.selected
-	defer history_entry_destroy(location)
-	paths := selection_paths(b)
-	defer file_paths_destroy(paths)
-	marked := make(map[string]bool)
-	defer delete(marked)
-	for path in paths {marked[path] = true}
-	anchor := ""
-	if b.anchor >= 0 && b.anchor < len(b.visible) {
-		anchor = strings.clone(b.entries[b.visible[b.anchor]].fullpath)
-	}
-	defer delete(anchor)
-	browser_read(b, b.path) or_return
-	browser_restore_location(b, location, cursor)
-	selection_clear(b)
-	for source, row in b.visible {
-		path := b.entries[source].fullpath
-		if marked[path] {selection_mark(b, row, true)}
-		if path == anchor {b.anchor = row}
-	}
+	dir := directory_open(b.path) or_return
+	defer os.close(dir)
+	entries := os.read_all_directory(dir, context.allocator) or_return
+	browser_replace_entries(b, entries)
 	return nil
 }
 
@@ -71,6 +55,7 @@ tab_switch :: proc(b: ^Browser, index: int, refresh := true) -> os.Error {
 	err: os.Error
 	if refresh || b.path == TRASH_PATH {err = tab_refresh(b)}
 	size_refresh_stale(b)
+	watch_sync(b, refresh = true)
 	storage_path(b.storage, b.path == TRASH_PATH ? "" : b.path)
 	if b.search != "" {search_start(b); search_blur(&b.header.edit)}
 	return err

@@ -49,6 +49,7 @@ Browser :: struct {
 	file_drag:              ^File_Drag,
 	sizes:                  map[string]Size_Entry,
 	size_service:           ^Size_Service,
+	watch:                  ^Watch_Service,
 	size_generation:        u64,
 	size_clock:             u64,
 	sorts:                  map[string]Sort_Spec, // Owned per-folder sort choices.
@@ -91,6 +92,7 @@ browser_destroy :: proc(b: ^Browser) {
 	for job in b.transfers {sync.atomic_store(&job.op.cancel, true)}
 	if b.pending_trash != nil {sync.atomic_store(&b.pending_trash.cancel, true)}
 	size_destroy(b.size_service)
+	watch_destroy(b.watch)
 	for job in b.transfers {file_operation_stop(job.op)}
 	delete(b.transfers)
 	for request in b.archive_requests {delete(request.source); delete(request.target)}
@@ -136,6 +138,7 @@ browser_read :: proc(b: ^Browser, path: string) -> os.Error {
 		browser_filter(b)
 		browser_message(b, "")
 		storage_path(b.storage, "")
+		watch_sync(b)
 		return nil
 	}
 	dir := directory_open(path) or_return
@@ -165,6 +168,7 @@ browser_read :: proc(b: ^Browser, path: string) -> os.Error {
 	browser_message(b, "")
 	browser_filter(b)
 	storage_path(b.storage, b.path)
+	watch_sync(b, refresh = true)
 	return nil
 }
 

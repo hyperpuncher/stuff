@@ -254,6 +254,8 @@ file_operation_apply :: proc(b: ^Browser, op: ^File_Operation) -> bool {
 		}
 	}
 	file_history_apply(b, op)
+	// Reject snapshots read before this operation completed.
+	if refresh || b.path == TRASH_PATH {watch_refresh(b.watch)}
 	// Refresh only the affected folder. Completion must not change navigation.
 	if b.path == TRASH_PATH {_ = trash_view_request(b)} else if refresh {
 		location := browser_location(b)

@@ -269,6 +269,38 @@ size_value :: proc(b: ^Browser, entry: os.File_Info) -> i64 {
 	return -1
 }
 
+size_path_changed :: proc(path: string, changes: []string) -> bool {
+	for change in changes {
+		if path_contains(path, change) || path_contains(change, path) {return true}
+	}
+	return false
+}
+
+// Cancel only affected roots and remove their queued results under the same
+// lock used by publication. Unrelated scans and request generations stay valid.
+size_paths_changed :: proc(b: ^Browser, paths: []string) {
+	if s := b.size_service; s != nil {
+		sync.mutex_lock(&s.mutex)
+		for scan in s.scans {
+			if size_path_changed(scan.path, paths) {sync.atomic_store(&scan.cancel, true)}
+		}
+		#reverse for request, i in s.queue {
+			if size_path_changed(request.path, paths) {
+				delete(request.path)
+				ordered_remove(&s.queue, i)
+			}
+		}
+		#reverse for result, i in s.results {
+			if size_path_changed(result.path, paths) {
+				delete(result.path)
+				ordered_remove(&s.results, i)
+			}
+		}
+		sync.mutex_unlock(&s.mutex)
+	}
+	for path in paths {size_cache_invalidate(b, path)}
+}
+
 size_cache_invalidate :: proc(b: ^Browser, path: string, descendants := true) {
 	if path == "" {return}
 	for cached_path in b.sizes {
@@ -374,22 +406,9 @@ size_complete :: proc(s: ^Size_Service) {
 		sync.mutex_lock(&s.mutex)
 		scan.pending -= 1
 		finished := scan.pending == 0
-		if finished {
-			for active, i in s.scans {
-				if active == scan {unordered_remove(&s.scans, i); break}
-			}
-		}
 		sync.mutex_unlock(&s.mutex)
 		if !finished {continue}
-		if size_scan_current(scan) {
-			children := scan.children[:]
-			if scan.aliases {children = nil}
-			size_publish(
-				s,
-				{path = scan.path, bytes = scan.bytes, generation = scan.generation, ok = scan.ok},
-				children,
-			)
-		} else {delete(scan.path)}
+		size_publish(scan)
 		for child in scan.children {delete(child.path)}
 		sync.mutex_lock(&s.mutex)
 		s.children -= len(scan.children)
@@ -448,11 +467,30 @@ size_child_add :: proc(scan: ^Size_Scan, child: ^Size_Child, bytes: i64, ok: boo
 	child.ok = child.ok && ok
 }
 
-// Transfer the parent and complete children together, with one UI wake.
-size_publish :: proc(s: ^Size_Service, result: Size_Result, children: []^Size_Child = nil) {
+// Retire the completed scan and publish its owned results under one lock.
+size_publish :: proc(scan: ^Size_Scan) {
+	s := scan.service
 	sync.mutex_lock(&s.mutex)
+	for active, i in s.scans {
+		if active == scan {unordered_remove(&s.scans, i); break}
+	}
+	if !size_scan_current(scan) {
+		sync.mutex_unlock(&s.mutex)
+		delete(scan.path)
+		return
+	}
 	wake := len(s.results) == 0
-	append(&s.results, result)
+	append(
+		&s.results,
+		Size_Result {
+			path = scan.path,
+			bytes = scan.bytes,
+			generation = scan.generation,
+			ok = scan.ok,
+		},
+	)
+	children := scan.children[:]
+	if scan.aliases {children = nil}
 	for child in children {
 		if !child.ok || len(s.results) >= SIZE_CACHE_LIMIT {continue}
 		append(
@@ -460,7 +498,7 @@ size_publish :: proc(s: ^Size_Service, result: Size_Result, children: []^Size_Ch
 			Size_Result {
 				path = child.path,
 				bytes = child.bytes,
-				generation = result.generation,
+				generation = scan.generation,
 				ok = true,
 				derived = true,
 			},

@@ -248,6 +248,7 @@ storage_worker_reads_and_stops :: proc(t: ^testing.T) {
 			case .Disks:
 				got_disks =
 					result.error == "" && len(result.disks) > 0 && result.disks[0].path == "/"
+			case .Watch_Reset:
 			case .Operation, .Files, .Progress:
 				testing.expect(t, false, "unexpected operation")
 			}

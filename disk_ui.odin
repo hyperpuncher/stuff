@@ -107,6 +107,9 @@ place_open :: proc(b: ^Browser, index: int, unmount := false) -> os.Error {
 
 storage_apply :: proc(b: ^Browser, result: Storage_Result) -> bool {
 	switch result.kind {
+	case .Watch_Reset:
+		watch_refresh(b.watch, reset = true)
+		return false
 	case .Progress:
 		for &job in b.transfers {
 			if job.op != result.files || sync.atomic_load(&job.op.cancel) {continue}

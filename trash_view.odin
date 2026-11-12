@@ -123,8 +123,8 @@ trash_roots :: proc(home: string, mounts: []Mount) -> [dynamic]Trash_Root {
 	for i in -1 ..< len(mounts) {
 		top := i < 0 ? "/" : mounts[i].path
 		for variant in 0 ..< (i < 0 ? 1 : 2) {
-			root := strings.clone(home)
-			if i >= 0 {
+			root: string
+			if i < 0 {root = strings.clone(home)} else {
 				root =
 					variant == 0 ? fmt.aprintf("%s/.Trash/%d", strings.trim_suffix(top, "/"), linux.getuid()) : fmt.aprintf("%s/.Trash-%d", strings.trim_suffix(top, "/"), linux.getuid())
 			}

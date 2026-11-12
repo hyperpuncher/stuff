@@ -364,7 +364,15 @@ run :: proc() -> int {
 	places_init(&b.places)
 	b.storage = storage_start(b.path)
 	if b.storage == nil {fmt.eprintln("cannot start the storage worker")}
-	if !smoke {b.size_service = size_start()}
+	if !smoke {
+		b.watch = watch_start()
+		if b.watch == nil {
+			browser_message(&b, "folder monitoring is unavailable")
+		} else {
+			watch_sync(&b)
+		}
+		b.size_service = size_start()
+	}
 	active := places_active(&b.places, b.path)
 	if active >= 0 {b.places.selected = active}
 	if !ttf.Init() {fmt.eprintln(string(sdl.GetError())); return 1}
@@ -435,6 +443,7 @@ run :: proc() -> int {
 	for running {
 		dirty = file_manager_poll(manager, &b, window) || dirty
 		dirty = file_drag_poll(&b) || dirty
+		dirty = watch_poll(&b) || dirty
 		dirty = storage_poll(&b) || dirty
 		dirty = size_poll(&b) || dirty
 		dirty = autoscroll_update(&b, g, sdl.GetTicks()) || dirty

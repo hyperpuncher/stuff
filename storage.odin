@@ -16,6 +16,7 @@ Storage_Result :: struct {
 		Operation,
 		Files,
 		Progress,
+		Watch_Reset,
 	},
 	disks:       [dynamic]Disk,
 	path, error: string,
@@ -279,6 +280,9 @@ storage_worker :: proc(data: rawptr) {
 			for {device := udev_monitor_receive_device(monitor); if device == nil {break}; udev_device_unref(device)}
 			need_disks, need_space = true, true
 		}
-		if .PRI in fds[2].revents {need_disks, need_space = true, true}
+		if .PRI in fds[2].revents {
+			need_disks, need_space = true, true
+			storage_publish(s, {kind = .Watch_Reset})
+		}
 	}
 }
