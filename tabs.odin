@@ -66,7 +66,7 @@ tab_open :: proc(b: ^Browser, path: string, activate := true) -> os.Error {
 	// has no workers, so opening a background tab cannot change active requests.
 	preview: Browser
 	preview.sorts, preview.sizes = b.sorts, b.sizes
-	preview.show_hidden = b.show_hidden
+	preview.show_hidden, preview.icons = b.show_hidden, b.icons
 	preview.sort_column, preview.descending = b.sort_column, b.descending
 	preview.space, preview.space_device = b.space, b.space_device
 	defer view_destroy(&preview.view)

@@ -31,7 +31,7 @@ Folder_View :: struct {
 	scroll_x:                f32, // Horizontal table offset in logical pixels.
 	marks:                   map[int]bool,
 	marked_bytes:            i64,
-	show_hidden:             bool,
+	show_hidden, icons:      bool,
 	search:                  string,
 	sort_column:             Column,
 	descending:              bool,
@@ -50,6 +50,7 @@ Browser :: struct {
 	sizes:                  map[string]Size_Entry,
 	size_service:           ^Size_Service,
 	watch:                  ^Watch_Service,
+	previews:               ^Preview_Service, // Borrowed; released before the renderer.
 	size_generation:        u64,
 	size_clock:             u64,
 	sorts:                  map[string]Sort_Spec, // Owned per-folder sort choices.

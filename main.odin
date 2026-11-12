@@ -84,12 +84,20 @@ handle_event :: proc(b: ^Browser, event: ^sdl.Event, g: Geometry, running: ^bool
 	return changed || pointer_changed || autoscroll_stopped || selection_cancelled
 }
 
-selection_key :: proc(key: sdl.Keycode, selected, first: ^int, count, rows: int) -> bool {
+selection_key :: proc(
+	key: sdl.Keycode,
+	selected: ^int,
+	count, rows: int,
+	stride: int = 1,
+) -> bool {
 	switch key {
 	case sdl.K_UP, sdl.K_K:
-		selected^ -= 1
+		selected^ -= max(1, stride)
 	case sdl.K_DOWN, sdl.K_J:
-		selected^ += 1
+		selected^ += max(1, stride)
+	case sdl.K_LEFT, sdl.K_RIGHT:
+		if stride <= 1 {return false}
+		selected^ += key == sdl.K_LEFT ? -1 : 1
 	case sdl.K_HOME:
 		selected^ = 0
 	case sdl.K_END:
@@ -101,7 +109,6 @@ selection_key :: proc(key: sdl.Keycode, selected, first: ^int, count, rows: int)
 	case:
 		return false
 	}
-	reveal_rows(selected, first, count, rows)
 	return true
 }
 
@@ -132,6 +139,9 @@ handle_input :: proc(
 		return true, nil
 	case .KEY_DOWN:
 		ctrl := event.key.mod & sdl.KMOD_CTRL != {}
+		if ctrl && (event.key.key == sdl.K_1 || event.key.key == sdl.K_2) {
+			return !event.key.repeat && view_set_icons(b, event.key.key == sdl.K_2), nil
+		}
 		shift := event.key.mod & sdl.KMOD_SHIFT != {}
 		if ctrl && event.key.key == sdl.K_Z {
 			if event.key.repeat {return false, nil}
@@ -170,12 +180,13 @@ handle_input :: proc(
 		if b.places.focused && event.key.key == sdl.K_E && event.key.mod & sdl.KMOD_CTRL != {} {
 			return true, place_open(b, b.places.selected, true)
 		}
-		selected, first, count, rows := &b.selected, &b.first, len(b.visible), g.rows
+		selected, count, rows := &b.selected, len(b.visible), g.rows
 		if b.places.focused {
-			selected, first, count = &b.places.selected, &b.places.first, len(b.places.entries)
+			selected, count = &b.places.selected, len(b.places.entries)
 			rows = places_geometry(g).rows
 		}
-		if selection_key(event.key.key, selected, first, count, rows) {
+		if selection_key(event.key.key, selected, count, rows, b.places.focused ? 1 : g.stride) {
+			if b.places.focused {places_reveal(&b.places, rows)} else {view_reveal(b, g)}
 			if !b.places.focused {
 				if shift {selection_extend(b, b.selected, ctrl)} else if ctrl {b.anchor = b.selected} else {selection_single(b, b.selected)}
 			}
@@ -212,7 +223,7 @@ handle_input :: proc(
 		case:
 			return false, nil
 		}
-		browser_reveal(b, g.rows)
+		view_reveal(b, g)
 		return true, err
 	case .MOUSE_BUTTON_UP:
 		if event.button.button == sdl.BUTTON_LEFT && file_drag_release(b) {return true, nil}
@@ -239,7 +250,8 @@ handle_input :: proc(
 		}
 		if dx != 0 {changed = table_scroll_by(b, g, dx * 3 * g.row) || changed}
 		if dy != 0 {
-			b.first = clamp(b.first - int(dy * 3), 0, max(0, len(b.visible) - g.rows))
+			amount: f32 = g.grid ? 1 : 3
+			b.first = view_first(g, b.first - int(dy * amount) * g.stride, len(b.visible))
 			changed = true
 		}
 		return changed, nil
@@ -279,7 +291,7 @@ handle_input :: proc(
 			b.places.selected = index
 			return true, place_open(b, index, unmount)
 		}
-		if y >= g.header && y < g.header + g.row {
+		if !g.grid && y >= g.header && y < g.header + g.row {
 			if column, ok := column_at(g, x, table_scroll_offset(b, g)); ok {
 				b.places.focused = false
 				browser_set_sort(b, column)
@@ -287,7 +299,7 @@ handle_input :: proc(
 			}
 			return false, nil
 		}
-		index := row_at(g, y, b.first, len(b.visible))
+		index := item_at(g, x, y, b.first, len(b.visible))
 		if index < 0 {return selection_drag_begin(b, g, x, y), nil}
 		b.places.focused = false
 		mods := sdl.GetModState()
@@ -303,6 +315,7 @@ handle_input :: proc(
 ui_wait_timeout :: proc(b: ^Browser, now: u64) -> i32 {
 	timeout := i32(-1)
 	if len(b.opens) > 0 {timeout = 100}
+	if preview_pending(b.previews) {timeout = 0}
 	if b.autoscroll.active && (b.autoscroll.rate_x != 0 || b.autoscroll.rate_y != 0) {timeout = 16}
 	for deadline in ([2]u64{b.header.copied_until, b.status_until}) {
 		if deadline == 0 {continue}
@@ -322,6 +335,7 @@ run :: proc() -> int {
 	Options :: struct {
 		path:     string `args:"pos=0" usage:"folder to browse"`,
 		smoke:    bool `usage:"draw one frame and exit"`,
+		icons:    bool `usage:"show icon view with image previews"`,
 		service:  bool `args:"name=dbus-service,hidden"`,
 		selected: [dynamic]string `args:"name=select,manifold" usage:"reveal files from one folder; must be the last option"`,
 	}
@@ -341,6 +355,7 @@ run :: proc() -> int {
 		browser_destroy(&b)
 		sdl.Quit()
 	}
+	b.icons = icons
 	b.sorts_path = sort_state_path(context.allocator)
 	defer delete(b.sorts_path)
 	sort_state_load(&b)
@@ -413,6 +428,8 @@ run :: proc() -> int {
 		font     = font,
 	}
 	defer painter_destroy(&painter)
+	if !smoke {b.previews = preview_start(cache_root = preview_cache_root(os.get_env("XDG_CACHE_HOME", context.temp_allocator), os.get_env("HOME", context.temp_allocator)))}
+	defer {preview_destroy(b.previews); b.previews = nil}
 
 	clay.SetMaxElementCount(4096)
 	memory := make([]u8, clay.MinMemorySize())
@@ -446,6 +463,7 @@ run :: proc() -> int {
 		dirty = watch_poll(&b) || dirty
 		dirty = storage_poll(&b) || dirty
 		dirty = size_poll(&b) || dirty
+		dirty = preview_poll(b.previews, renderer) || dirty
 		dirty = autoscroll_update(&b, g, sdl.GetTicks()) || dirty
 		dirty = file_open_poll(&b) || dirty
 		dirty = header_update(&b.header, sdl.GetTicks()) || dirty
@@ -492,8 +510,11 @@ run :: proc() -> int {
 				font_points * (96.0 / 72.0),
 				f32(ttf.GetFontHeight(font)) / scale,
 				tab_count(&b),
+				b.icons,
 			)
 			g.transfers = file_transfers_height(&b, g)
+			if b.icons {painter_load_large_icons(&painter, scale)}
+			preview_prepare(b.previews, &b, g)
 			commands := layout(&b, g, &painter)
 			if hover_update(&b, g) {commands = layout(&b, g, &painter)}
 			cursor_update(hand, &b, g, text_cursor)

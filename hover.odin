@@ -26,7 +26,10 @@ hover_target :: proc(b: ^Browser, g: Geometry) -> u32 {
 		if row >= 0 && menu_enabled(b, Menu_Action(row)) {return clay.ID("menu-item", u32(row)).id}
 		return 0
 	}
-	if y < g.header {return header_target(&b.header, x, y)}
+	if y < g.header {
+		if view_button_hit(b, x, y) {return clay.ID("view-mode").id}
+		return header_target(&b.header, x, y)
+	}
 	if table_scrollbar_hit(b, g, x, y) {return clay.ID("table-scrollbar").id}
 	if places, hit := scrollbar_hit(b, g, x, y); hit {return scrollbar_id(places).id}
 	if x < g.sidebar {
@@ -38,12 +41,12 @@ hover_target :: proc(b: ^Browser, g: Geometry) -> u32 {
 		}
 		return 0
 	}
-	if y < g.header + g.row {
+	if !g.grid && y < g.header + g.row {
 		if column, ok := column_at(g, x, table_scroll_offset(b, g));
 		   ok {return clay.ID("column", u32(column)).id}
 		return 0
 	}
-	index := row_at(g, y, b.first, len(b.visible))
+	index := item_at(g, x, y, b.first, len(b.visible))
 	if index >= 0 {return clay.ID("row", u32(b.visible[index])).id}
 	return 0
 }
@@ -82,7 +85,9 @@ pointer_cursor :: proc(b: ^Browser, g: Geometry) -> sdl.SystemCursor {
 	   b.hovered == scrollbar_id(true).id {return .DEFAULT}
 	if b.pointer.active &&
 	   b.hovered != 0 &&
-	   (b.pointer.y < g.header || b.pointer.x < g.sidebar || b.pointer.y < g.header + g.row) {
+	   (b.pointer.y < g.header ||
+			   b.pointer.x < g.sidebar ||
+			   !g.grid && b.pointer.y < g.header + g.row) {
 		return .POINTER
 	}
 	return .DEFAULT

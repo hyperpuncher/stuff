@@ -117,7 +117,7 @@ menu_show :: proc(b: ^Browser, x, y: f32) {
 
 menu_open :: proc(b: ^Browser, g: Geometry, x, y: f32) -> bool {
 	if x < g.sidebar || x >= g.width || y < g.list_top || y >= list_bottom(g) {return false}
-	row := row_at(g, y, b.first, len(b.visible))
+	row := item_at(g, x, y, b.first, len(b.visible))
 	if row < 0 {selection_clear(b)} else if !b.marks[b.visible[row]] {selection_single(b, row)}
 	b.places.focused = false
 	b.drag = {}

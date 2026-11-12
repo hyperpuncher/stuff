@@ -6,6 +6,9 @@ import clay "vendor/clay"
 import sdl "vendor:sdl3"
 
 SIDEBAR_WIDTH :: 192
+THUMBNAIL_LOGICAL :: 96
+// Thumbnails are cached at this physical pixel size.
+THUMBNAIL_PIXELS :: 256
 MIN_WINDOW_WIDTH :: SIDEBAR_WIDTH + 592
 MIN_WINDOW_HEIGHT :: 240
 
@@ -14,7 +17,9 @@ Geometry :: struct {
 	padding, gap, sidebar, list_padding, font_size:            f32,
 	columns:                                                   [Column]f32,
 	row_gap, transfers, table_width, horizontal_bar:           f32,
-	rows:                                                      int,
+	rows, stride:                                              int,
+	grid:                                                      bool,
+	cell_height, cell_width:                                   f32,
 }
 
 geometry :: proc(
@@ -23,6 +28,7 @@ geometry :: proc(
 	font_size: f32 = 14,
 	font_height: f32 = 0,
 	tab_count: int = 1,
+	icons := false,
 ) -> Geometry {
 	g := Geometry {
 		width        = f32(width),
@@ -40,7 +46,7 @@ geometry :: proc(
 	}
 	if tab_count > 1 {g.tabs = g.row + 2 * g.row_gap}
 	g.header += g.tabs
-	g.list_top = g.header + g.row + g.list_padding
+	g.list_top = g.header + (icons ? 0 : g.row) + g.list_padding
 	g.columns[.Size] = 112 * scale
 	g.columns[.Type] = 88 * scale
 	g.columns[.Modified] = 184 * scale
@@ -51,7 +57,19 @@ geometry :: proc(
 	g.columns[.Name] = max(200 * scale, name_width)
 	g.table_width = g.width - g.sidebar + (g.columns[.Name] - name_width)
 	if table_scroll_max(g) > 0 {g.horizontal_bar = 12 * scale}
-	g.rows = max(1, int((list_bottom(g) - g.list_top) / g.row))
+	g.stride = 1
+	if icons {
+		g.grid = true
+		g.horizontal_bar = 0
+		g.table_width = g.width - g.sidebar
+		available := max(1, g.width - g.sidebar - 2 * g.padding - 12 * scale)
+		g.stride = max(1, int(available / ((THUMBNAIL_LOGICAL + 48) * scale)))
+		g.cell_width = available / f32(g.stride)
+		// Reserve two filename lines below the thumbnail.
+		g.cell_height = max(132, THUMBNAIL_LOGICAL + 20 + 2 * font_height) * scale
+	}
+	item_height := g.grid ? g.cell_height : g.row
+	g.rows = max(1, int((list_bottom(g) - g.list_top) / item_height)) * g.stride
 	return g
 }
 
@@ -78,7 +96,7 @@ table_scroll_by :: proc(b: ^Browser, g: Geometry, pixels: f32) -> bool {
 }
 
 column_at :: proc(g: Geometry, x: f32, offset: f32 = 0) -> (Column, bool) {
-	if x < g.sidebar || x >= g.width {return .Name, false}
+	if g.grid || x < g.sidebar || x >= g.width {return .Name, false}
 	left := g.sidebar + g.padding - offset
 	for width, column in g.columns {
 		if x >= left && x < left + width {return column, true}
@@ -296,7 +314,7 @@ table_row :: proc(b: ^Browser, index: int, g: Geometry, p: ^Painter) {
 
 layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.RenderCommand) {
 	b.scroll_x = table_scroll_offset(b, g) / g.scale
-	b.first = clamp(b.first, 0, max(0, len(b.visible) - g.rows))
+	b.first = view_first(g, b.first, len(b.visible))
 	b.places.first = clamp(
 		b.places.first,
 		0,
@@ -323,7 +341,7 @@ layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.Ren
 				},
 			},
 			) {
-				table_header(b, g, p)
+				if !g.grid {table_header(b, g, p)}
 				if clay.UI()(
 				{
 					layout = list_layout(g),
@@ -344,7 +362,9 @@ layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) -> clay.ClayArray(clay.Ren
 								label(message, theme.muted, g.font_size)
 							}
 						}
-						for i in b.first ..< min(b.first + g.rows + 1, len(b.visible)) {table_row(b, i, g, p)}
+						if g.grid {grid_rows(b, g, p)} else {
+							for i in b.first ..< min(b.first + g.rows + 1, len(b.visible)) {table_row(b, i, g, p)}
+						}
 					}
 				}
 			}

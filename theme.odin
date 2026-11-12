@@ -38,10 +38,12 @@ theme_apply :: proc(p: ^Painter, system: sdl.SystemTheme) -> bool {
 	if system == .LIGHT {next = LIGHT_THEME}
 	if theme == next {return false}
 	theme = next
-	for icon, kind in p.icons {
-		if icon == nil {continue}
+	for _, kind in p.icons {
 		color := icon_color(kind)
-		sdl_check(sdl.SetTextureColorMod(icon, u8(color[0]), u8(color[1]), u8(color[2])))
+		for icon in ([2]^sdl.Texture{p.icons[kind], p.large_icons[kind]}) {
+			if icon !=
+			   nil {sdl_check(sdl.SetTextureColorMod(icon, u8(color[0]), u8(color[1]), u8(color[2])))}
+		}
 	}
 	return true
 }

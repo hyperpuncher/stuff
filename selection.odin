@@ -31,9 +31,12 @@ selection_drag_input :: proc(b: ^Browser, event: ^sdl.Event, g: Geometry) -> boo
 		box := selection_drag_box(d^)
 		selection_clear(b)
 		if box.width > 0 && box.height > 0 {
-			for row in b.first ..< min(b.first + g.rows + 1, len(b.visible)) {
-				top := g.list_top + f32(row - b.first) * g.row
-				if top < box.y + box.height && top + g.row > box.y {
+			for row in b.first ..< min(b.first + g.rows + max(1, g.stride), len(b.visible)) {
+				item := item_box(g, row, b.first)
+				if item.x < box.x + box.width &&
+				   item.x + item.width > box.x &&
+				   item.y < box.y + box.height &&
+				   item.y + item.height > box.y {
 					selection_mark(b, row, true)
 					b.selected = row
 				}

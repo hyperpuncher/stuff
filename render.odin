@@ -49,6 +49,8 @@ Icon :: enum {
 	Move,
 	MoveHorizontal,
 	MoveVertical,
+	ListView,
+	IconView,
 }
 
 ICON_SOURCES :: [Icon]string {
@@ -89,6 +91,8 @@ ICON_SOURCES :: [Icon]string {
 	.Move            = #load("vendor/lucide/move.svg"),
 	.MoveHorizontal  = #load("vendor/lucide/move-horizontal.svg"),
 	.MoveVertical    = #load("vendor/lucide/move-vertical.svg"),
+	.ListView        = #load("vendor/lucide/list.svg"),
+	.IconView        = #load("vendor/lucide/layout-grid.svg"),
 }
 
 entry_icon :: proc(entry: os.File_Info) -> Icon {
@@ -210,6 +214,8 @@ Painter :: struct {
 	font:              ^ttf.Font,
 	slots:             [dynamic]^ttf.Text,
 	icons:             [Icon]^sdl.Texture,
+	large_icons:       [Icon]^sdl.Texture,
+	large_icon_scale:  f32,
 	menu_shadow:       ^sdl.Texture,
 	menu_shadow_size:  [2]i32,
 	menu_shadow_scale: f32,
@@ -271,7 +277,25 @@ painter_load_icons :: proc(p: ^Painter, scale: f32) {
 		color := icon_color(kind)
 		sdl_check(sdl.SetTextureColorMod(texture, u8(color[0]), u8(color[1]), u8(color[2])))
 		p.icons[kind] = texture
+
 	}
+}
+
+painter_load_large_icons :: proc(p: ^Painter, scale: f32) {
+	if p.large_icon_scale == scale {return}
+	for kind in Icon {
+		if kind > .Database {break}
+		if p.large_icons[kind] != nil {sdl.DestroyTexture(p.large_icons[kind])}
+		surface := icon_surface(kind, i32(48 * scale))
+		assert(surface != nil, string(sdl.GetError()))
+		defer sdl.DestroySurface(surface)
+		texture := sdl.CreateTextureFromSurface(p.renderer, surface)
+		assert(texture != nil, string(sdl.GetError()))
+		color := icon_color(kind)
+		sdl_check(sdl.SetTextureColorMod(texture, u8(color[0]), u8(color[1]), u8(color[2])))
+		p.large_icons[kind] = texture
+	}
+	p.large_icon_scale = scale
 }
 
 painter_destroy :: proc(p: ^Painter) {
@@ -279,6 +303,7 @@ painter_destroy :: proc(p: ^Painter) {
 	for icon in p.icons {
 		if icon != nil {sdl.DestroyTexture(icon)}
 	}
+	for texture in p.large_icons {if texture != nil {sdl.DestroyTexture(texture)}}
 	for text in p.slots {ttf.DestroyText(text)}
 	delete(p.slots)
 }
@@ -288,6 +313,80 @@ text_width :: proc(font: ^ttf.Font, value: string) -> i32 {
 	width, height: c.int
 	sdl_check(ttf.GetStringSize(font, raw_data(value), uint(len(value)), &width, &height))
 	return width
+}
+
+// Grapheme start offsets plus the end of the value. Temporary or caller-owned.
+label_boundaries :: proc(value: string, allocator := context.temp_allocator) -> [dynamic]int {
+	boundaries := make([dynamic]int, allocator)
+	append(&boundaries, 0)
+	clusters := utf8.decode_grapheme_iterator_make(value)
+	for _, cluster in utf8.decode_grapheme_iterate(&clusters) {
+		append(&boundaries, cluster.byte_index + len(cluster.text))
+	}
+	return boundaries
+}
+
+// Keep the whole extension when it fits, even if that needs a longer suffix.
+label_minimum_suffix :: proc(
+	font: ^ttf.Font,
+	value: string,
+	boundaries: []int,
+	width: i32,
+	ellipsis: string,
+) -> int {
+	extension := os.ext(value)
+	if extension == "" ||
+	   text_width(font, fmt.tprintf("%s%s", ellipsis, extension)) > width {return 0}
+	for boundary, i in boundaries {
+		if boundary == len(value) - len(extension) {return len(boundaries) - 1 - i}
+	}
+	return 0
+}
+
+label_center :: proc(
+	value: string,
+	boundaries: []int,
+	kept, minimum_suffix: int,
+	ellipsis: string,
+) -> string {
+	count := len(boundaries) - 1
+	suffix := max(kept / 2, min(kept, minimum_suffix))
+	prefix := kept - suffix
+	return fmt.tprintf(
+		"%s%s%s",
+		value[:boundaries[prefix]],
+		ellipsis,
+		value[boundaries[count - suffix]:],
+	)
+}
+
+// Split at a grapheme boundary. Prefer balanced lines and keep the final
+// extension whole so wrapping never strands a single extension character.
+split_label_lines :: proc(
+	font: ^ttf.Font,
+	value: string,
+	width: i32,
+) -> (
+	first, second: string,
+	ok: bool,
+) {
+	if value == "" {return}
+	boundaries := label_boundaries(value)
+	count := len(boundaries) - 1
+	extension := os.ext(value)
+	extension_start := len(value) - len(extension)
+	best, best_score := 0, i32(-1)
+	for i in 1 ..< count {
+		prefix_width := text_width(font, value[:boundaries[i]])
+		if prefix_width > width {break}
+		suffix_width := text_width(font, value[boundaries[i]:])
+		if suffix_width > width {continue}
+		score := min(prefix_width, suffix_width)
+		if extension_start > 0 && boundaries[i] > extension_start {score -= 2 * width}
+		if score > best_score {best, best_score = i, score}
+	}
+	if best == 0 {return}
+	return value[:boundaries[best]], value[boundaries[best]:], true
 }
 
 // Returns the input, a static ellipsis, or a temporary string. No ownership transfers.
@@ -300,34 +399,15 @@ fit_label :: proc(font: ^ttf.Font, value: string, max_width: f32, middle := fals
 	if width < ellipsis_width {return ""}
 	if width == ellipsis_width {return ellipsis}
 	if middle {
-		boundaries := make([dynamic]int, context.temp_allocator)
-		append(&boundaries, 0)
-		clusters := utf8.decode_grapheme_iterator_make(value)
-		for _, cluster in utf8.decode_grapheme_iterate(&clusters) {
-			append(&boundaries, cluster.byte_index + len(cluster.text))
-		}
+		boundaries := label_boundaries(value)
 		count := len(boundaries) - 1
-		minimum_suffix := 0
-		extension := os.ext(value)
-		if extension != "" && text_width(font, fmt.tprintf("%s%s", ellipsis, extension)) <= width {
-			for boundary, i in boundaries {
-				if boundary == len(value) - len(extension) {minimum_suffix = count - i; break}
-			}
-		}
+		minimum_suffix := label_minimum_suffix(font, value, boundaries[:], width, ellipsis)
 		// Find how many complete graphemes fit, balanced around the ellipsis.
-		// Keep the full extension when it fits, even if that needs a longer suffix.
 		low, high := 0, count - 1
 		result := ellipsis
 		for low <= high {
 			kept := low + (high - low) / 2
-			suffix := max(kept / 2, min(kept, minimum_suffix))
-			prefix := kept - suffix
-			candidate := fmt.tprintf(
-				"%s%s%s",
-				value[:boundaries[prefix]],
-				ellipsis,
-				value[boundaries[count - suffix]:],
-			)
+			candidate := label_center(value, boundaries[:], kept, minimum_suffix, ellipsis)
 			if text_width(font, candidate) <= width {
 				result = candidate
 				low = kept + 1
@@ -358,6 +438,41 @@ fit_label :: proc(font: ^ttf.Font, value: string, max_width: f32, middle := fals
 	}
 	if end == 0 {return ellipsis}
 	return fmt.tprintf("%s%s", value[:end], ellipsis)
+}
+
+Label_Lines :: struct {
+	first, second: string,
+	count:         int,
+}
+
+// Fit a name into at most two lines. Center truncation keeps the start and the
+// extension. Returned strings are static or temporary.
+fit_label_lines :: proc(font: ^ttf.Font, value: string, max_width: f32) -> Label_Lines {
+	width := i32(math.floor(max_width))
+	if width <= 0 || value == "" {return {}}
+	if text_width(font, value) <= width {return {value, "", 1}}
+	if first, second, ok := split_label_lines(font, value, width); ok {return {first, second, 2}}
+	ellipsis :: "…"
+	ellipsis_width := text_width(font, ellipsis)
+	if width < ellipsis_width {return {}}
+	if width == ellipsis_width {return {ellipsis, "", 1}}
+	boundaries := label_boundaries(value)
+	count := len(boundaries) - 1
+	minimum_suffix := label_minimum_suffix(font, value, boundaries[:], width, ellipsis)
+	low, high := 0, count - 1
+	result: Label_Lines
+	for low <= high {
+		kept := low + (high - low) / 2
+		candidate := label_center(value, boundaries[:], kept, minimum_suffix, ellipsis)
+		if first, second, ok := split_label_lines(font, candidate, width); ok {
+			result = {first, second, 2}
+			low = kept + 1
+		} else {
+			high = kept - 1
+		}
+	}
+	if result.count == 0 {return {ellipsis, "", 1}}
+	return result
 }
 
 measure_text :: proc "c" (

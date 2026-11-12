@@ -1,5 +1,6 @@
 package main
 
+import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:testing"
@@ -137,6 +138,64 @@ verify_middle_fitting :: proc(t: ^testing.T, font: ^ttf.Font) {
 	testing.expect(t, a != b, "the ending must distinguish these filenames")
 }
 
+verify_label_lines :: proc(t: ^testing.T, font: ^ttf.Font) {
+	width := f32(text_width(font, "short name.png"))
+	testing.expect_value(t, fit_label_lines(font, "", width).count, 0)
+	testing.expect_value(t, fit_label_lines(font, "short name.png", width).first, "short name.png")
+	testing.expect_value(t, fit_label_lines(font, "short name.png", width).count, 1)
+	values := [?]string {
+		"Scott Arthur Jones complete collection (2025).pdf",
+		"an especially long folder name without an extension",
+		".a-very-long-hidden-filename",
+		"a\u0301a\u0301a\u0301a\u0301a\u0301a\u0301a\u0301a\u0301.txt",
+		"👩‍💻👩‍💻👩‍💻👩‍💻👩‍💻.txt",
+	}
+	for value in values {
+		for line_width in ([?]f32{50.5, 100.25, 160}) {
+			lines := fit_label_lines(font, value, line_width)
+			testing.expect(t, lines.count == 1 || lines.count == 2)
+			for line in ([?]string{lines.first, lines.second}) {
+				if line == "" {continue}
+				testing.expect(t, f32(text_width(font, line)) <= line_width)
+			}
+			if lines.count == 1 {
+				testing.expect_value(t, lines.first, value)
+				continue
+			}
+			testing.expect(t, lines.second != "")
+			joined := fmt.tprintf("%s%s", lines.first, lines.second)
+			index := strings.index(joined, "…")
+			if index < 0 {
+				testing.expect_value(t, joined, value)
+				continue
+			}
+			prefix, suffix := joined[:index], joined[index + len("…"):]
+			testing.expect(
+				t,
+				strings.has_prefix(value, prefix) && strings.has_suffix(value, suffix),
+			)
+			if extension := os.ext(value);
+			   extension != "" &&
+			   f32(text_width(font, fmt.tprintf("…%s", extension))) <= line_width {
+				testing.expect(t, strings.has_suffix(suffix, extension))
+			}
+			boundary, suffix_boundary := len(prefix) == 0, len(suffix) == len(value)
+			it := utf8.decode_grapheme_iterator_make(value)
+			for _, cluster in utf8.decode_grapheme_iterate(&it) {
+				end := cluster.byte_index + len(cluster.text)
+				if end == len(prefix) {boundary = true}
+				if end == len(value) - len(suffix) {suffix_boundary = true}
+			}
+			testing.expect(t, boundary && suffix_boundary, "cuts must preserve graphemes")
+		}
+	}
+	// A name that fits in two lines must not be truncated.
+	name := "Scott Arthur Jones collection.pdf"
+	split := fit_label_lines(font, name, f32(text_width(font, name)) * 0.6)
+	testing.expect(t, split.count == 2 && split.first != "" && split.second != "")
+	testing.expect(t, strings.index(fmt.tprintf("%s%s", split.first, split.second), "…") < 0)
+}
+
 verify_rounded_corners :: proc(t: ^testing.T, renderer: ^sdl.Renderer) {
 	for corners in ([?]clay.CornerRadius{clay.CornerRadiusAll(2), clay.CornerRadiusAll(8), {topLeft = 5, bottomLeft = 5, topRight = 2, bottomRight = 2}, clay.CornerRadiusAll(15)}) {
 		for offset in ([?]f32{0, 0.25, 0.5, 0.75}) {
@@ -195,6 +254,7 @@ large_directory_layout :: proc(t: ^testing.T) {
 	defer ttf.CloseFont(font)
 	verify_label_fitting(t, font)
 	verify_middle_fitting(t, font)
+	verify_label_lines(t, font)
 	engine := ttf.CreateRendererTextEngine(renderer)
 	if engine == nil {testing.fail_now(t, string(sdl.GetError()))}
 	defer ttf.DestroyRendererTextEngine(engine)
@@ -226,6 +286,7 @@ large_directory_layout :: proc(t: ^testing.T) {
 	verify_tabs_layout(t, &p)
 	verify_file_progress_layout(t, &p)
 	verify_selection_drag_rendering(t, &p)
+	verify_grid_rendering(t, &p)
 
 	b: Browser
 	defer browser_destroy(&b)

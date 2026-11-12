@@ -24,7 +24,7 @@ drag_target :: proc(b: ^Browser, g: Geometry, x, y: f32) -> (path: string, id: u
 		return place.path, clay.ID("place", u32(index)).id
 	}
 	if y < g.list_top || y >= list_bottom(g) || b.path == TRASH_PATH {return}
-	index := row_at(g, y, b.first, len(b.visible))
+	index := item_at(g, x, y, b.first, len(b.visible))
 	if index < 0 {return b.path, clay.ID("files-viewport").id}
 	entry := b.entries[b.visible[index]]
 	if entry.type == .Directory ||

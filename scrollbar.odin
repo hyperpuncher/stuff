@@ -36,7 +36,7 @@ autoscroll_begin :: proc(b: ^Browser, g: Geometry, x, y: f32) -> bool {
 	b.autoscroll.active =
 		scrollbar_for(b, g, places).max_first > 0 || !places && table_scroll_max(g) > 0
 	if !places && b.path != TRASH_PATH {
-		if row := row_at(g, y, b.first, len(b.visible)); row >= 0 {
+		if row := item_at(g, x, y, b.first, len(b.visible)); row >= 0 {
 			source := b.visible[row]
 			if entry_is_directory(b.entries[source]) {b.autoscroll.folder = source + 1}
 		}
@@ -78,7 +78,7 @@ autoscroll_update :: proc(b: ^Browser, g: Geometry, now: u64) -> bool {
 	rows := int(a.remainder)
 	a.remainder -= f64(rows)
 	previous := first^
-	first^ = clamp(first^ + rows, 0, last)
+	first^ = clamp(first^ + rows * (a.places ? 1 : max(1, g.stride)), 0, last)
 	horizontal := a.rate_x != 0 && table_scroll_by(b, g, f32(a.rate_x * f64(g.row) * elapsed))
 	return first^ != previous || horizontal
 }
@@ -100,8 +100,16 @@ scrollbar_geometry :: proc(g: Geometry, count, first: int, places: bool) -> Scro
 	if places {view, right = places_geometry(g), g.sidebar}
 	height := list_bottom(view) - view.list_top
 	if count <= view.rows || height <= 0 {return {}}
-	thumb_height := min(height, max(24 * g.scale, height * height / (f32(count) * g.row)))
-	last := count - view.rows
+	stride := max(1, view.stride)
+	total_rows := (count + stride - 1) / stride
+	thumb_height := min(
+		height,
+		max(
+			24 * g.scale,
+			height * height / (f32(total_rows) * (view.grid ? view.cell_height : view.row)),
+		),
+	)
+	last := view_last(view, count)
 	top := view.list_top + f32(clamp(first, 0, last)) / f32(last) * (height - thumb_height)
 	return {
 		track = {right - 10 * g.scale, view.list_top, 8 * g.scale, height},
@@ -141,6 +149,7 @@ scrollbar_motion :: proc(b: ^Browser, g: Geometry, x, y: f32) -> bool {
 	if travel <= 0 {b.drag = {}; return false}
 	fraction := clamp((y - bar.track.y - b.drag.grab) / travel, 0, 1)
 	first := int(math.round(fraction * f32(bar.max_first)))
+	if !b.drag.places {first = view_first(g, first, len(b.visible))}
 	offset := &b.first
 	if b.drag.places {offset = &b.places.first}
 	if offset^ == first {return false}

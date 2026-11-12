@@ -56,6 +56,7 @@ header_update :: proc(h: ^Header, now: u64) -> bool {
 }
 
 header_hit :: proc(id: clay.ElementId, x, y: f32) -> bool {
+	if clay.GetCurrentContext() == nil {return false}
 	element := clay.GetElementData(id)
 	box := element.boundingBox
 	return(
@@ -80,6 +81,7 @@ header_target :: proc(h: ^Header, x, y: f32) -> u32 {
 
 header_click :: proc(b: ^Browser, x, y: f32) -> (handled: bool, err: os.Error) {
 	h := &b.header
+	if view_button_hit(b, x, y) {return view_set_icons(b, !b.icons), nil}
 	target := header_target(h, x, y)
 	if target == 0 {return false, nil}
 	if target == clay.ID("copy_path").id {header_copy(b); return true, nil}
@@ -98,19 +100,29 @@ header_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 	if h.edit.mode == .Search ||
 	   h.edit.active && !edit_is_dialog(h.edit.mode) {path_edit_layout(b, g, p); return}
 	header_sync(h, b.path)
+	right_padding := u16((g.header - g.tabs - 28 * g.scale) / 2)
 	if b.path == TRASH_PATH {
 		if clay.UI()(
 		{
 			layout = {
 				sizing = {clay.SizingGrow(), clay.SizingFixed(g.header - g.tabs)},
-				padding = {left = u16(16 * g.scale)},
+				padding = {left = u16(16 * g.scale), right = right_padding},
 				childAlignment = {y = .Center},
 			},
 		},
-		) {label("trash", theme.text, g.font_size)}
+		) {
+			label("trash", theme.text, g.font_size)
+			if clay.UI()({layout = {sizing = {width = clay.SizingGrow()}}}) {}
+			view_button(b, g, p)
+		}
 		return
 	}
-	available := g.width - 2 * f32(u16(12 * g.scale)) - f32(u16(8 * g.scale)) - 28 * g.scale
+	available :=
+		g.width -
+		f32(u16(12 * g.scale)) -
+		f32(right_padding) -
+		3 * f32(u16(8 * g.scale)) -
+		56 * g.scale
 	labels := make([]struct {
 			value: string,
 			width: f32,
@@ -131,7 +143,7 @@ header_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 	{
 		layout = {
 			sizing = {clay.SizingGrow(), clay.SizingFixed(g.header - g.tabs)},
-			padding = {left = u16(12 * g.scale), right = u16(12 * g.scale)},
+			padding = {left = u16(12 * g.scale), right = right_padding},
 			childGap = u16(8 * g.scale),
 			childAlignment = {y = .Center},
 		},
@@ -182,5 +194,7 @@ header_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 			if h.copied_until != 0 {kind = .Check}
 			icon_element(p, kind, g.scale)
 		}
+		if clay.UI()({layout = {sizing = {width = clay.SizingGrow()}}}) {}
+		view_button(b, g, p)
 	}
 }

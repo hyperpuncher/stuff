@@ -92,7 +92,8 @@ places_reveal :: proc(p: ^Places, rows: int) {
 places_geometry :: proc(g: Geometry) -> Geometry {
 	result := g
 	result.horizontal_bar = 0
-	result.list_top -= g.row
+	result.grid, result.stride = false, 1
+	result.list_top = g.header + g.list_padding
 	result.height -= g.transfers
 	result.rows = max(1, int((list_bottom(result) - result.list_top) / result.row))
 	return result

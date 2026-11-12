@@ -80,7 +80,7 @@ watch_poll :: proc(b: ^Browser) -> bool {
 	if result.overflow {append(&paths, "/")} else {
 		for path in result.changes {append(&paths, path)}
 	}
-	if len(paths) > 0 {size_paths_changed(b, paths[:])}
+	if len(paths) > 0 {size_paths_changed(b, paths[:]); preview_invalidate(b.previews, paths[:])}
 	if result.listing && result.path == b.path && result.version == version {
 		browser_replace_entries(b, result.entries)
 		result.entries = nil

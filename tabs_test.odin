@@ -28,8 +28,10 @@ tabs_preserve_views_and_refresh_changed_entries :: proc(t: ^testing.T) {
 	search_blur(&b.header.edit)
 	selection_single(&b, 2)
 	selection_click(&b, 4, true, false)
-	b.first, b.scroll_x = 3, 64
+	b.first, b.scroll_x, b.icons = 3, 64, true
 	testing.expect(t, tab_open(&b, two) == nil)
+	testing.expect(t, b.icons, "new tabs inherit the view mode")
+	_ = view_set_icons(&b, false)
 	testing.expect_value(t, b.path, two)
 	testing.expect_value(t, b.scroll_x, f32(0))
 	testing.expect_value(t, b.search, "")
@@ -38,6 +40,7 @@ tabs_preserve_views_and_refresh_changed_entries :: proc(t: ^testing.T) {
 	testing.expect(t, os.write_entire_file(fmt.tprintf("%s/item-00a", one), "new") == nil)
 	testing.expect(t, tab_switch(&b, 0) == nil)
 	testing.expect_value(t, b.path, one)
+	testing.expect(t, b.icons, "each tab keeps its view mode")
 	testing.expect_value(t, b.search, "item")
 	testing.expect_value(t, strings.to_string(b.header.edit.buffer), "item")
 	testing.expect(t, !b.header.edit.active)
