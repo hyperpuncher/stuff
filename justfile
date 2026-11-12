@@ -1,13 +1,14 @@
 clay_cpu_flags := if arch() == "x86_64" { "-march=x86-64 -mtune=generic" } else { "" }
 release_arch := if arch() == "aarch64" { "arm64" } else { "x64" }
+clay_dir := if arch() == "aarch64" { "vendor/clay/linux-arm64" } else { "vendor/clay/linux" }
 
 default:
 	@just --list
 
-build: clay
+build: _dirs
 	odin build . -out:build/stuff -debug
 
-release: clay
+release: _dirs
 	odin build . -out:build/stuff -o:speed -source-code-locations:filename -no-rpath -extra-linker-flags:"-s"
 
 # build the release archive for the native architecture.
@@ -28,15 +29,15 @@ check:
 check-arm:
 	odin check . -vet -strict-style -target:linux_arm64
 
-test: clay
+test: _dirs
 	SDL_VIDEODRIVER=dummy SDL_RENDER_DRIVER=software odin test . -out:build/stuff-tests -define:ODIN_TEST_THREADS=1
 
 # time directory size scans over an isolated 16,384-file fixture.
-bench-sizes: clay
+bench-sizes: _dirs
 	SDL_VIDEODRIVER=dummy SDL_RENDER_DRIVER=software odin test . -o:speed -out:build/stuff-size-bench -define:ODIN_TEST_THREADS=1 -define:SIZE_BENCH=true -define:ODIN_TEST_NAMES=main.directory_size_benchmark
 
 # exercise real drag negotiation in a private headless Wayland compositor (labwc).
-test-drag: clay
+test-drag: _dirs
 	odin test . -out:build/stuff-drag-tests -define:ODIN_TEST_THREADS=1 -define:NATIVE_WAYLAND_TESTS=true -define:ODIN_TEST_NAMES=main.native_wayland_file_drag
 
 fmt:
@@ -53,10 +54,11 @@ smoke: build
 smoke-wayland: build
 	SDL_VIDEODRIVER=wayland ./build/stuff --smoke
 
-# build the pinned Clay source for the native architecture.
+# explicitly rebuild the vendored Clay archive for the native architecture.
 clay: _dirs
+	mkdir -p {{clay_dir}}
 	cc -std=c99 -O3 -fPIC {{clay_cpu_flags}} -DCLAY_IMPLEMENTATION -x c -c vendor/clay/clay.h -o build/clay.o
-	ar rcsD vendor/clay/linux/clay.a build/clay.o
+	ar rcsD {{clay_dir}}/clay.a build/clay.o
 
 _dirs:
-	mkdir -p build vendor/clay/linux
+	mkdir -p build
