@@ -44,6 +44,12 @@ jobs:
         with:
           token: ${{ github.token }}
           release: dev-2026-10
+      - name: build vendor stb libraries
+        run: |
+          root=$(odin root)
+          if [[ ! -f $root/vendor/stb/lib/stb_image.a ]]; then
+            bash "$root/vendor/stb/src/build_stb.sh" unix
+          fi
       - name: check and test
         run: |
           just check test test-drag smoke check-packaging
