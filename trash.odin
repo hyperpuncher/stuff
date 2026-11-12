@@ -17,29 +17,6 @@ trash_home_path :: proc() -> string {
 	return fmt.aprintf("%s/.local/share/Trash", home)
 }
 
-// Trash directories must belong to this user and must not be writable by other
-// users. FAT/exFAT can report 0755 for a requested 0700 directory. Never follow
-// a link in place of a trash directory. Access stays relative to the open fd.
-trash_private_at :: proc(parent: linux.Fd, name: cstring) -> (fd: linux.Fd, err: os.Error) {
-	mkdir_err := linux.mkdirat(parent, name, transmute(linux.Mode)u32(0o700))
-	if mkdir_err != .NONE && mkdir_err != .EEXIST {return -1, mkdir_err}
-	return trash_private_open_at(parent, name)
-}
-
-trash_private_open_at :: proc(parent: linux.Fd, name: cstring) -> (fd: linux.Fd, err: os.Error) {
-	open_err: linux.Errno
-	fd, open_err = linux.openat(parent, name, {.DIRECTORY, .NOFOLLOW, .CLOEXEC})
-	if open_err != .NONE {return -1, open_err}
-	st: linux.Stat
-	stat_err := linux.fstat(fd, &st)
-	if stat_err != .NONE {linux.close(fd); return -1, stat_err}
-	if st.uid != linux.getuid() || transmute(u32)st.mode & 0o022 != 0 {
-		linux.close(fd)
-		return -1, linux.Errno.EACCES
-	}
-	return fd, nil
-}
-
 // Missing roots, and foreign or shared roots we may not read, are not failures.
 trash_ignored_error :: proc(err: os.Error, local: bool) -> bool {
 	return(
@@ -76,7 +53,7 @@ trash_root_open_private :: proc(root: string, shared: bool) -> (linux.Fd, os.Err
 	}
 	name_c := strings.clone_to_cstring(name)
 	defer delete(name_c)
-	return trash_private_open_at(fd, name_c)
+	return private_dir_open_at(fd, name_c)
 }
 
 trash_home_open :: proc(home: string) -> (linux.Fd, os.Error) {
@@ -89,7 +66,7 @@ trash_home_open :: proc(home: string) -> (linux.Fd, os.Error) {
 	fd, open_err := linux.open(path_c, {.DIRECTORY, .CLOEXEC})
 	if open_err != .NONE {return -1, open_err}
 	defer linux.close(fd)
-	return trash_private_at(fd, "Trash")
+	return private_dir_at(fd, "Trash")
 }
 
 trash_local_open :: proc(top: string) -> (linux.Fd, os.Error) {
@@ -106,12 +83,12 @@ trash_local_open :: proc(top: string) -> (linux.Fd, os.Error) {
 		if linux.fstat(shared, &st) == .NONE && transmute(u32)st.mode & 0o1000 != 0 {
 			name := strings.clone_to_cstring(uid)
 			defer delete(name)
-			if user, err := trash_private_at(shared, name); err == nil {return user, nil}
+			if user, err := private_dir_at(shared, name); err == nil {return user, nil}
 		}
 	}
 	name := fmt.caprintf(".Trash-%s", uid)
 	defer delete(name)
-	return trash_private_at(fd, name)
+	return private_dir_at(fd, name)
 }
 
 // Freedesktop trash format: a same-filesystem rename and a .trashinfo record.
@@ -155,9 +132,9 @@ trash_file :: proc(source, home: string, mounts: []Mount, record: ^File_Change =
 	st: linux.Stat
 	if stat_err := linux.fstat(root, &st); stat_err != .NONE {return stat_err}
 	if u64(st.dev) != info.device {return linux.Errno.EXDEV}
-	files := trash_private_at(root, "files") or_return
+	files := private_dir_at(root, "files") or_return
 	defer linux.close(files)
-	infos := trash_private_at(root, "info") or_return
+	infos := private_dir_at(root, "info") or_return
 	defer linux.close(infos)
 	files_path, infos_path: string
 	defer delete(files_path)

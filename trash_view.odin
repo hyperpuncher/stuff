@@ -68,10 +68,10 @@ trash_read_root :: proc(
 	id := [2]u64{u64(st.dev), u64(st.ino)}
 	if seen^[id] {return nil}
 	seen^[id] = true
-	files := trash_private_open_at(trash, "files") or_return
+	files := private_dir_open_at(trash, "files") or_return
 	dir := os.new_file(uintptr(files), fmt.tprintf("%s/files", root))
 	defer os.close(dir)
-	infos := trash_private_open_at(trash, "info") or_return
+	infos := private_dir_open_at(trash, "info") or_return
 	defer linux.close(infos)
 	it := os.read_directory_iterator_create(dir)
 	defer os.read_directory_iterator_destroy(&it)

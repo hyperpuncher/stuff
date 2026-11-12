@@ -29,11 +29,11 @@ trash_empty_root :: proc(
 ) -> os.Error {
 	trash := trash_root_open(root, shared, local) or_return
 	defer linux.close(trash)
-	files := trash_private_open_at(trash, "files") or_return
+	files := private_dir_open_at(trash, "files") or_return
 	// Invalidate this tree even if deletion later fails or is cancelled.
 	append(&op.applied, File_Change{path = strings.clone(root)})
 	if err := trash_remove_children(op, files); err != nil {return err}
-	infos, info_err := trash_private_open_at(trash, "info")
+	infos, info_err := private_dir_open_at(trash, "info")
 	if info_err == .NONE {
 		if err := trash_remove_children(op, infos); err != nil {return err}
 	} else if info_err != linux.Errno.ENOENT && info_err != .Not_Exist {
