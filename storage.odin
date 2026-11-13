@@ -253,20 +253,13 @@ storage_worker :: proc(data: rawptr) {
 		timeout: ^linux.Time_Spec
 		if deadline != max(u64) {
 			now := sdl.GetTicks()
-			ms := deadline > now ? deadline - now : 0
-			wait = {
-				time_sec  = uint(ms / 1000),
-				time_nsec = uint(ms % 1000) * 1_000_000,
-			}
+			wait = poll_timeout(deadline > now ? deadline - now : 0)
 			timeout = &wait
 		}
 		_, err := linux.ppoll(fds[:], timeout, nil)
 		if err == .EINTR {continue}
 		if err != .NONE {fmt.eprintfln("cannot wait for disk changes: %v", err); return}
-		if .IN in fds[0].revents {
-			buffer: [256]u8
-			for {n, read_err := linux.read(s.wake[0], buffer[:]); if read_err != .NONE || n == 0 {break}}
-		}
+		if .IN in fds[0].revents {wake_drain(s.wake[0])}
 		if .IN in fds[1].revents || .ERR in fds[1].revents {
 			for {device := udev_monitor_receive_device(monitor); if device == nil {break}; udev_device_unref(device)}
 			need_disks, need_space = true, true

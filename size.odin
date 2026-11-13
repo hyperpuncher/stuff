@@ -352,8 +352,7 @@ size_worker :: proc(s: ^Size_Service) {
 		size_complete(s)
 	}
 	for {
-		buffer: [64]u8
-		for {n, err := linux.read(s.wake[0], buffer[:]); if err != .NONE || n == 0 {break}}
+		wake_drain(s.wake[0])
 		size_complete(s)
 		{
 			sync.mutex_guard(&s.mutex)
@@ -384,9 +383,7 @@ size_worker :: proc(s: ^Size_Service) {
 		fds := [1]linux.Poll_Fd{{fd = s.wake[0], events = {.IN}}}
 		// A task wakes us before the pool records its completion. The short
 		// timeout covers that race while busy; idle waits have no timeout.
-		timeout := linux.Time_Spec {
-			time_nsec = 1_000_000,
-		}
+		timeout := poll_timeout(1)
 		_, err := linux.ppoll(fds[:], outstanding > 0 ? &timeout : nil, nil)
 		if err != .NONE && err != .EINTR {
 			fmt.eprintfln("cannot wait for size work: %v", err)

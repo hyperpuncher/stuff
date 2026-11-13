@@ -375,19 +375,12 @@ watch_worker :: proc(w: ^Watch_Service) {
 		timeout: ^linux.Time_Spec
 		if due != 0 {
 			now := sdl.GetTicks()
-			ms := due > now ? due - now : 0
-			wait = {
-				time_sec  = uint(ms / 1000),
-				time_nsec = uint(ms % 1000) * 1_000_000,
-			}
+			wait = poll_timeout(due > now ? due - now : 0)
 			timeout = &wait
 		}
 		_, err := linux.ppoll(fds[:], timeout, nil)
 		if err == .EINTR {continue}
 		if err != .NONE {return}
-		if .IN in fds[0].revents {
-			buffer: [128]u8
-			for {n, read_err := linux.read(w.wake[0], buffer[:]); if read_err != .NONE || n == 0 {break}}
-		}
+		if .IN in fds[0].revents {wake_drain(w.wake[0])}
 	}
 }
