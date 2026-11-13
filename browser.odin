@@ -302,9 +302,7 @@ browser_summary :: proc(b: ^Browser) -> string {
 			format_size(bytes),
 		)
 	}
-	source := 0
-	for index in b.marks {source = index}
-	entry := b.entries[source]
+	entry := b.entries[selection_sole(b)]
 	detail := "special file"
 	#partial switch entry.type {
 	case .Regular:

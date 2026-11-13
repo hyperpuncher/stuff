@@ -30,8 +30,9 @@ menu_visible :: proc(b: ^Browser, action: Menu_Action) -> bool {
 	if action == .Compress {return b.path != TRASH_PATH && len(b.marks) > 0}
 	if action == .Extract {return archive_selection_can_extract(b)}
 	if action == .Open_With {
-		if len(b.marks) != 1 {return false}
-		for index in b.marks {return b.entries[index].type == .Regular || b.entries[index].type == .Symlink}
+		index := selection_sole(b)
+		if index < 0 {return false}
+		return b.entries[index].type == .Regular || b.entries[index].type == .Symlink
 	}
 	if action == .Restore || action == .Empty_Trash {return b.path == TRASH_PATH}
 	if action == .Trash {return b.path != TRASH_PATH}
@@ -89,7 +90,7 @@ menu_enabled :: proc(b: ^Browser, action: Menu_Action) -> bool {
 	case .Select_All:
 		return len(b.visible) > 0
 	}
-	unreachable()
+	unreachable() // menu_visible is checked first, so every case is enabled above.
 }
 
 menu_action_at :: proc(b: ^Browser, g: Geometry, x, y: f32) -> int {

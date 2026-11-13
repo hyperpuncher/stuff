@@ -159,6 +159,13 @@ selection_all :: proc(b: ^Browser) {
 	b.anchor = b.selected
 }
 
+// The only marked entry index, or -1 when the selection is not exactly one.
+selection_sole :: proc(b: ^Browser) -> int {
+	if len(b.marks) != 1 {return -1}
+	for index in b.marks {return index}
+	return -1
+}
+
 // Owned paths in display order. Only explicit marks are included.
 selection_paths :: proc(b: ^Browser) -> [dynamic]string {
 	paths := make([dynamic]string, 0, len(b.marks))

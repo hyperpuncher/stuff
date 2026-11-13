@@ -21,14 +21,12 @@ file_dialog_start :: proc(b: ^Browser, rename: bool) {
 	path_edit_end(edit)
 	edit.mode = rename ? .Rename : .New_Folder
 	if rename {
-		for index in b.marks {
-			entry := b.entries[index]
-			edit.source = strings.clone(entry.fullpath)
-			path_edit_init(b, entry.name)
-			if entry.type != .Directory {
-				if dot := strings.last_index_byte(entry.name, '.');
-				   dot > 0 {edit.text.selection[0] = dot}
-			}
+		entry := b.entries[selection_sole(b)]
+		edit.source = strings.clone(entry.fullpath)
+		path_edit_init(b, entry.name)
+		if entry.type != .Directory {
+			if dot := strings.last_index_byte(entry.name, '.');
+			   dot > 0 {edit.text.selection[0] = dot}
 		}
 	} else {
 		edit.source = strings.clone(b.path)
