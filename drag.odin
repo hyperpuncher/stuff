@@ -129,8 +129,7 @@ file_drop_input :: proc(b: ^Browser, event: ^sdl.Event, g: Geometry) -> bool {
 	case .DROP_FILE:
 		if len(d.drop_paths) == 0 {
 			drag_destination_update(b, g, event.drop.x, event.drop.y)
-			delete(d.drop_target)
-			d.drop_target = strings.clone(d.target)
+			replace_owned(&d.drop_target, d.target)
 		}
 		path := string(event.drop.data)
 		if !strings.has_prefix(

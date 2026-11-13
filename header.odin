@@ -25,8 +25,7 @@ header_destroy :: proc(h: ^Header) {
 
 header_sync :: proc(h: ^Header, path: string) {
 	if h.path == path {return}
-	delete(h.path)
-	h.path = strings.clone(path)
+	replace_owned(&h.path, path)
 	clear(&h.crumbs)
 	if path == "" {return}
 	append(&h.crumbs, Breadcrumb{0, 1})

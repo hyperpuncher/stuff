@@ -151,8 +151,7 @@ disks_read :: proc(udev: ^Udev) -> (disks: [dynamic]Disk, err: string) {
 		label := string(udev_device_get_property_value(device, "ID_FS_LABEL_ENC"))
 		owned_label := escaped_decode(label, true)
 		if owned_label == "" {
-			delete(owned_label)
-			owned_label = strings.clone(string(udev_device_get_sysname(device)))
+			replace_owned(&owned_label, string(udev_device_get_sysname(device)))
 		}
 		append(
 			&disks,

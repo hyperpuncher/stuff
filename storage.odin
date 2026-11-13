@@ -104,7 +104,7 @@ storage_path :: proc(s: ^Storage, path: string) {
 	if s == nil {return}
 	sync.mutex_lock(&s.mutex)
 	changed := s.path != path
-	if changed {delete(s.path); s.path = strings.clone(path); s.space_requested = true}
+	if changed {replace_owned(&s.path, path); s.space_requested = true}
 	sync.mutex_unlock(&s.mutex)
 	if changed {storage_wake(s)}
 }
@@ -211,8 +211,8 @@ storage_worker :: proc(data: rawptr) {
 			space := space_query(path)
 			if path != reported_path || space != last_space {
 				storage_publish(s, {kind = .Space, path = strings.clone(path), space = space})
-				delete(reported_path)
-				reported_path, last_space = strings.clone(path), space
+				replace_owned(&reported_path, path)
+				last_space = space
 			}
 			for &disk in disks {
 				disk_space := space

@@ -315,8 +315,7 @@ path_edit_input :: proc(
 		path_edit_replace(b, string(event.text.text))
 		return true, nil
 	case .TEXT_EDITING:
-		delete(edit.composition)
-		edit.composition = strings.clone(string(event.edit.text))
+		replace_owned(&edit.composition, string(event.edit.text))
 		return true, nil
 	case .MOUSE_BUTTON_UP:
 		edit.dragging = false

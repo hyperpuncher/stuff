@@ -1,7 +1,6 @@
 package main
 
 import "core:os"
-import "core:strings"
 import "core:sync"
 
 watch_refresh :: proc(w: ^Watch_Service, reset := false) {
@@ -21,8 +20,7 @@ watch_sync :: proc(b: ^Browser, refresh := false) {
 	active := trash ? "" : b.path
 	sync.mutex_lock(&w.mutex)
 	if !refresh && w.active == active && w.trash == trash {sync.mutex_unlock(&w.mutex); return}
-	delete(w.active)
-	w.active = strings.clone(active)
+	replace_owned(&w.active, active, w.allocator)
 	w.version += 1
 	w.trash, w.configure, w.refresh = trash, true, true
 	sync.mutex_unlock(&w.mutex)

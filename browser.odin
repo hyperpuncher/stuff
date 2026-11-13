@@ -77,8 +77,7 @@ Browser :: struct {
 }
 
 browser_message :: proc(b: ^Browser, message: string) {
-	delete(b.status_error)
-	b.status_error = strings.clone(message)
+	replace_owned(&b.status_error, message)
 	b.status_until = message != "" ? sdl.GetTicks() + 3000 : 0
 }
 
@@ -132,8 +131,8 @@ browser_read :: proc(b: ^Browser, path: string) -> os.Error {
 		os.file_info_slice_delete(b.entries, context.allocator)
 		trash_records_destroy(b.trash_records)
 		b.entries, b.trash_records = nil, nil
-		delete(b.path)
-		b.path, b.space, b.drag = strings.clone(TRASH_PATH), {}, {}
+		replace_owned(&b.path, TRASH_PATH)
+		b.space, b.drag = {}, {}
 		b.scroll_x = 0
 		b.menu.active = false
 		browser_filter(b)

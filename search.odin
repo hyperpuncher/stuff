@@ -44,8 +44,7 @@ search_start :: proc(b: ^Browser) {
 search_update :: proc(b: ^Browser) {
 	value := strings.to_string(b.header.edit.buffer)
 	if b.header.edit.mode != .Search || b.search == value {return}
-	delete(b.search)
-	b.search = strings.clone(value)
+	replace_owned(&b.search, value)
 	browser_filter(b)
 	browser_message(b, "")
 }

@@ -608,8 +608,7 @@ archive_execute :: proc(op: ^File_Operation) -> os.Error {
 		err := file_rename_new(payload, destination)
 		if err == linux.Errno.EEXIST && op.kind == .Extract {continue}
 		if err != nil {return err}
-		delete(change.path)
-		change.path = strings.clone(destination)
+		replace_owned(&change.path, destination)
 		append(&op.changes, change)
 		recorded = true
 		if op.kind == .Compress {file_progress_advance(op)}
