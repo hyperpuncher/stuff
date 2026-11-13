@@ -11,7 +11,13 @@ import "core:thread"
 import sdl "vendor:sdl3"
 
 SIZE_CACHE_LIMIT :: 4096
-SIZE_REFRESH_MS :: 5000 // Recheck completed totals on tab activation, not on a timer.
+// Completed totals are trusted for this long; watch invalidation and tab
+// activation refresh them sooner when the folder itself changed.
+SIZE_RECHECK_MS :: 60_000
+// The scan pool stays small so a first-time du of a huge tree cannot pin the
+// whole machine; six threads sit at the knee of the scan time curve, and more
+// threads only widen the burst. The work is background feedback.
+SIZE_SCAN_WORKERS :: 6
 
 Size_State :: enum {
 	Pending,
@@ -19,11 +25,11 @@ Size_State :: enum {
 	Failed,
 }
 Size_Entry :: struct {
-	state:         Size_State,
-	bytes:         i64,
-	request:       u64,
-	used:          u64,
-	refresh_after: u64,
+	state:     Size_State,
+	bytes:     i64,
+	request:   u64,
+	used:      u64,
+	completed: u64, // Ticks when the last full scan finished; zero never.
 }
 Size_Request :: struct {
 	path:       string, // Owned by the queue, then the worker.
@@ -94,7 +100,10 @@ size_start :: proc(workers := 0) -> ^Size_Service {
 	if event == 0 {linux.close(fds[0]); linux.close(fds[1]); return nil}
 	s := new(Size_Service)
 	s.allocator, s.wake, s.event = context.allocator, fds, sdl.EventType(event)
-	s.workers = max(1, workers > 0 ? workers : os.get_processor_core_count())
+	s.workers = max(
+		1,
+		workers > 0 ? workers : min(os.get_processor_core_count(), SIZE_SCAN_WORKERS),
+	)
 	s.worker = thread.create_and_start_with_poly_data(s, size_worker, name = "stuff-sizes")
 	if s.worker == nil {
 		linux.close(fds[0]); linux.close(fds[1]); free(s)
@@ -147,6 +156,7 @@ size_poll :: proc(b: ^Browser) -> bool {
 			if exists && cached.request == b.size_generation {continue}
 			if !exists && len(b.sizes) >= SIZE_CACHE_LIMIT {continue}
 			cached.state, cached.bytes = .Known, result.bytes
+			cached.completed = sdl.GetTicks()
 			if !exists {
 				cached.used = b.size_clock > 0 ? b.size_clock - 1 : 0
 				b.sizes[strings.clone(result.path)] = cached
@@ -156,7 +166,7 @@ size_poll :: proc(b: ^Browser) -> bool {
 		if !exists {continue}
 		cached.state, cached.bytes = result.ok ? .Known : .Failed, result.bytes
 		cached.request = result.generation
-		cached.refresh_after = sdl.GetTicks() + SIZE_REFRESH_MS
+		cached.completed = sdl.GetTicks()
 		b.sizes[result.path] = cached
 		changed = true
 	}
@@ -193,7 +203,6 @@ size_request_visible :: proc(b: ^Browser, rows: int) {
 		if scan.generation == b.size_generation && exists && cached.used == b.size_clock {
 			// A slow refresh must not submit another copy of its active root.
 			cached.request = b.size_generation
-			cached.refresh_after = now + SIZE_REFRESH_MS
 			b.sizes[scan.path] = cached
 			continue
 		}
@@ -220,8 +229,12 @@ size_request_visible :: proc(b: ^Browser, rows: int) {
 			if entry.type != .Directory {continue}
 			cached := b.sizes[entry.fullpath]
 			if cached.request == b.size_generation {continue}
+			// Recent totals are shown as they are; every open of the same
+			// folder must not rerun a full du of every visible directory.
+			if cached.state == .Known &&
+			   cached.completed != 0 &&
+			   now < cached.completed + SIZE_RECHECK_MS {continue}
 			cached.request = b.size_generation
-			cached.refresh_after = now + SIZE_REFRESH_MS
 			b.sizes[entry.fullpath] = cached
 			append(
 				&s.queue,
@@ -240,7 +253,8 @@ size_request_visible :: proc(b: ^Browser, rows: int) {
 size_refresh_stale :: proc(b: ^Browser) {
 	now := sdl.GetTicks()
 	for _, &cached in b.sizes {
-		if cached.state == .Pending || now < cached.refresh_after {continue}
+		if cached.state == .Pending ||
+		   cached.completed != 0 && now < cached.completed + SIZE_RECHECK_MS {continue}
 		cached.request = 0
 	}
 }

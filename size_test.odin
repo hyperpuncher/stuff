@@ -57,15 +57,15 @@ tab_changes_keep_recent_sizes_and_allow_expired_totals_to_refresh :: proc(t: ^te
 		size_request_visible(&b, 1)
 	}
 	testing.expect_value(t, b.size_generation, generation)
-	testing.expect_value(t, b.sizes[tree].refresh_after, cached.refresh_after)
+	testing.expect_value(t, b.sizes[tree].completed, cached.completed)
 	testing.expect_value(t, b.sizes[tree].bytes, i64(4))
-	// Expire the cached total without a five-second test sleep. A descendant
-	// change must be found even though the top-level folder did not change.
-	cached.refresh_after = 0
+	// Expire the cached total without waiting. A descendant change must be
+	// found even though the top-level folder did not change.
+	cached.completed = 0
 	b.sizes[tree] = cached
 	// An ordinary frame must not start periodic filesystem work.
 	size_request_visible(&b, 1)
-	testing.expect_value(t, b.sizes[tree].refresh_after, u64(0))
+	testing.expect_value(t, b.sizes[tree].completed, u64(0))
 	testing.expect(t, tab_open(&b, root) == nil)
 	size_request_visible(&b, 1)
 	size_request_visible(&b, 1)
@@ -128,6 +128,12 @@ directory_sizes_keep_cached_totals_on_reopen_and_reject_old_results :: proc(t: ^
 	testing.expect_value(t, cached.bytes, i64(4))
 	size_request_visible(&b, 1)
 	testing.expect_value(t, b.sizes[fmt.tprintf("%s/0", root)].state, Size_State.Known)
+	// A fresh total is trusted on reopen; the change appears once it expires.
+	cached = b.sizes[fmt.tprintf("%s/0", root)]
+	testing.expect(t, cached.completed != 0)
+	cached.completed = 0
+	b.sizes[fmt.tprintf("%s/0", root)] = cached
+	size_request_visible(&b, 1)
 	size_test_wait(t, &b, fmt.tprintf("%s/0", root), 7)
 	// A folder removed after listing must finish as unavailable, not stay pending.
 	missing := fmt.tprintf("%s/3", root)
@@ -375,6 +381,11 @@ directory_size_split_totals_cancel_and_close_descriptors :: proc(t: ^testing.T) 
 	)
 	size_request_visible(&b, 1)
 	testing.expect_value(t, b.sizes[fmt.tprintf("%s/large/0", root)].bytes, i64(248))
+	// A fresh total is trusted on reopen; the change appears once it expires.
+	cached := b.sizes[fmt.tprintf("%s/large/0", root)]
+	cached.completed = 0
+	b.sizes[fmt.tprintf("%s/large/0", root)] = cached
+	size_request_visible(&b, 1)
 	size_test_wait(t, &b, fmt.tprintf("%s/large/0", root), 257)
 	for _ in 0 ..< 12 {
 		size_cache_clear(&b)
