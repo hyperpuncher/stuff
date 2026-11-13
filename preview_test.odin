@@ -333,3 +333,26 @@ previews_preserve_pixels_reuse_cache_reject_stale_results_and_stop :: proc(t: ^t
 	preview_destroy(s)
 	s, b.previews = nil, nil
 }
+
+@(test)
+svg_previews_rasterize_into_the_requested_box :: proc(t: ^testing.T) {
+	if !testing.expect(t, sdl.Init({.VIDEO})) {return}
+	defer sdl.Quit()
+	root, err := os.make_directory_temp("/tmp", "stuff-svg-", context.allocator)
+	if err != nil {testing.fail_now(t, "cannot create svg fixture")}
+	defer delete(root)
+	defer os.remove_all(root)
+	path := fmt.aprintf("%s/logo.svg", root)
+	defer delete(path)
+	svg := `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><rect width="200" height="100" fill="#0000ff"/></svg>`
+	if !testing.expect(t, os.write_entire_file(path, svg) == nil) {return}
+	native := preview_decode({path = path, edge = 64})
+	if !testing.expect(t, native != nil) {return}
+	defer sdl.DestroySurface(native)
+	// The 2:1 logo fits the 64 pixel box with the aspect ratio kept.
+	testing.expect_value(t, native.w, i32(64))
+	testing.expect_value(t, native.h, i32(32))
+	r, green, blue, alpha: u8
+	sdl_check(sdl.ReadSurfacePixel(native, 32, 16, &r, &green, &blue, &alpha))
+	testing.expect(t, r <= 2 && green <= 2 && blue >= 250 && alpha == 255)
+}

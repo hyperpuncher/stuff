@@ -12,6 +12,7 @@ import "core:sys/posix"
 import "core:thread"
 import "core:time"
 import sdl "vendor:sdl3"
+import image "vendor:sdl3/image"
 import stb "vendor:stb/image"
 
 // Holds about 128 live 256 pixel textures before eviction.
@@ -63,9 +64,9 @@ preview_supported :: proc(entry: os.File_Info) -> bool {
 	return false
 }
 
-// Extensions that stb decodes for thumbnails.
+// Bitmaps that stb decodes, plus .svg that SDL_image rasterizes.
 @(rodata)
-PREVIEW_EXTENSIONS := [?]string{".png", ".jpg", ".jpeg", ".gif", ".bmp"}
+PREVIEW_EXTENSIONS := [?]string{".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg"}
 
 // Buffered reads avoid keeping a second complete copy of the compressed file.
 // The callbacks cannot read or seek past the size checked on the open file.
@@ -114,6 +115,9 @@ preview_decode :: proc(request: Preview_Request, service: ^Preview_Service = nil
 	   !linux.S_ISREG(stat.mode) ||
 	   stat.size <= 0 ||
 	   stat.size > PREVIEW_FILE_LIMIT {return nil}
+	if strings.equal_fold(os.ext(request.path), ".svg") {
+		return preview_svg_decode(request, file, i64(stat.size))
+	}
 	input := Preview_Input {
 		file = file,
 		size = i64(stat.size),
@@ -149,6 +153,26 @@ preview_decode :: proc(request: Preview_Request, service: ^Preview_Service = nil
 	defer stb.image_free(pixels)
 	if input.failed {return nil}
 	return preview_scale(pixels, width, height, width * 4, request.edge)
+}
+
+// SVGs are vector data: SDL_image rasterizes straight into the requested box
+// with the aspect ratio preserved, so no decode amplification is possible and
+// the disk cache stores the standard 256 pixel bucket like any bitmap.
+preview_svg_decode :: proc(
+	request: Preview_Request,
+	file: ^posix.FILE,
+	size: i64,
+) -> ^sdl.Surface {
+	data := make([]u8, int(size))
+	defer delete(data)
+	// One buffered read; the open already vetted a regular file of this size.
+	if i64(posix.fread(raw_data(data), 1, c.size_t(len(data)), file)) !=
+	   i64(len(data)) {return nil}
+	io := sdl.IOFromConstMem(raw_data(data), uint(len(data)))
+	if io == nil {return nil}
+	defer sdl.CloseIO(io)
+	edge := max(1, request.edge)
+	return image.LoadSizedSVG_IO(io, c.int(edge), c.int(edge))
 }
 
 preview_scale :: proc(pixels: [^]u8, width, height, pitch: c.int, edge: int) -> ^sdl.Surface {
