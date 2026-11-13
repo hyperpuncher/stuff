@@ -266,18 +266,21 @@ icon_color :: proc(kind: Icon) -> clay.Color {
 	return theme.muted
 }
 
+painter_load_icon :: proc(p: ^Painter, kind: Icon, size: i32, slot: ^^sdl.Texture) {
+	if slot^ != nil {sdl.DestroyTexture(slot^)}
+	surface := icon_surface(kind, size)
+	assert(surface != nil, string(sdl.GetError()))
+	defer sdl.DestroySurface(surface)
+	texture := sdl.CreateTextureFromSurface(p.renderer, surface)
+	assert(texture != nil, string(sdl.GetError()))
+	color := icon_color(kind)
+	sdl_check(sdl.SetTextureColorMod(texture, u8(color[0]), u8(color[1]), u8(color[2])))
+	slot^ = texture
+}
+
 painter_load_icons :: proc(p: ^Painter, scale: f32) {
 	for _, kind in ICON_SOURCES {
-		if p.icons[kind] != nil {sdl.DestroyTexture(p.icons[kind])}
-		surface := icon_surface(kind, i32(icon_size(kind) * scale))
-		assert(surface != nil, string(sdl.GetError()))
-		defer sdl.DestroySurface(surface)
-		texture := sdl.CreateTextureFromSurface(p.renderer, surface)
-		assert(texture != nil, string(sdl.GetError()))
-		color := icon_color(kind)
-		sdl_check(sdl.SetTextureColorMod(texture, u8(color[0]), u8(color[1]), u8(color[2])))
-		p.icons[kind] = texture
-
+		painter_load_icon(p, kind, i32(icon_size(kind) * scale), &p.icons[kind])
 	}
 }
 
@@ -285,15 +288,7 @@ painter_load_large_icons :: proc(p: ^Painter, scale: f32) {
 	if p.large_icon_scale == scale {return}
 	for kind in Icon {
 		if kind > .Database {break}
-		if p.large_icons[kind] != nil {sdl.DestroyTexture(p.large_icons[kind])}
-		surface := icon_surface(kind, i32(48 * scale))
-		assert(surface != nil, string(sdl.GetError()))
-		defer sdl.DestroySurface(surface)
-		texture := sdl.CreateTextureFromSurface(p.renderer, surface)
-		assert(texture != nil, string(sdl.GetError()))
-		color := icon_color(kind)
-		sdl_check(sdl.SetTextureColorMod(texture, u8(color[0]), u8(color[1]), u8(color[2])))
-		p.large_icons[kind] = texture
+		painter_load_icon(p, kind, i32(48 * scale), &p.large_icons[kind])
 	}
 	p.large_icon_scale = scale
 }

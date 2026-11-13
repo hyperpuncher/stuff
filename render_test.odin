@@ -303,7 +303,7 @@ large_directory_layout :: proc(t: ^testing.T) {
 	selections := [?]int{0, 50_000, 99_999}
 	for selected in selections {
 		selection_single(&b, selected)
-		browser_reveal(&b, g.rows)
+		view_reveal(&b, g)
 		commands := layout(&b, g, &p)
 		testing.expect(t, int(commands.length) <= 7 * g.rows + 32)
 		file_selection := false
@@ -348,7 +348,7 @@ large_directory_layout :: proc(t: ^testing.T) {
 	for size in sizes {
 		sdl_check(sdl.SetWindowSize(window, size[0], size[1]))
 		g = geometry(size[0], size[1], 1)
-		browser_reveal(&b, g.rows)
+		view_reveal(&b, g)
 		commands := layout(&b, g, &p)
 		testing.expect(t, int(commands.length) <= 7 * g.rows + 32)
 		has_file_name, has_type := false, false

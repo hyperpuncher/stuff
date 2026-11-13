@@ -273,9 +273,9 @@ format_size :: proc(bytes: i64) -> string {
 	if bytes < 1024 {return fmt.tprintf("%d B", bytes)}
 	value := f64(bytes)
 	units := [?]string{"KiB", "MiB", "GiB", "TiB", "PiB", "EiB"}
-	for unit in units {
+	for unit, i in units {
 		value /= 1024
-		if value < 1024 || unit == "EiB" {return fmt.tprintf("%.1f %s", value, unit)}
+		if value < 1024 || i == len(units) - 1 {return fmt.tprintf("%.1f %s", value, unit)}
 	}
 	unreachable()
 }
@@ -329,10 +329,6 @@ reveal_rows :: proc(selected, first: ^int, count, visible_rows: int) {
 	if selected^ < first^ {first^ = selected^}
 	if selected^ >= first^ + rows {first^ = selected^ - rows + 1}
 	first^ = clamp(first^, 0, max(0, count - rows))
-}
-
-browser_reveal :: proc(b: ^Browser, visible_rows: int) {
-	reveal_rows(&b.selected, &b.first, len(b.visible), visible_rows)
 }
 
 history_entry_destroy :: proc(entry: History_Entry) {

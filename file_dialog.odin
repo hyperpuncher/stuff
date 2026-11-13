@@ -100,6 +100,15 @@ file_dialog_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 			archive_format_layout(b, g)
 		}
 		if clay.UI()({layout = {sizing = {clay.SizingGrow(), clay.SizingFixed(8 * g.scale)}}}) {}
+		submit := "create"
+		switch {
+		case edit.waiting != nil:
+			submit = "working…"
+		case edit.mode == .Password:
+			submit = "extract"
+		case edit.mode == .Rename:
+			submit = "rename"
+		}
 		if clay.UI()(
 		{
 			layout = {
@@ -121,11 +130,7 @@ file_dialog_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 					cornerRadius = clay.CornerRadiusAll(5 * g.scale),
 				},
 				) {
-					label(
-						i == 0 ? "cancel" : edit.waiting != nil ? "working…" : edit.mode == .Password ? "extract" : edit.mode == .Rename ? "rename" : "create",
-						theme.text,
-						g.font_size,
-					)
+					label(i == 0 ? "cancel" : submit, theme.text, g.font_size)
 				}
 			}
 		}

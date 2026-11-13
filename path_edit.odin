@@ -242,6 +242,32 @@ path_edit_click :: proc(edit: ^Path_Edit, g: Geometry, x: f32, extend: bool) {
 	if !extend {edit.text.selection[1] = cursor}
 }
 
+path_edit_submit :: proc(b: ^Browser, edit: ^Path_Edit) -> os.Error {
+	if edit.mode == .Search {search_blur(edit); return nil}
+	if edit_is_dialog(edit.mode) {file_dialog_submit(b); return nil}
+	target := strings.to_string(edit.buffer)
+	if target == "" {browser_message(b, "enter a folder path"); return nil}
+	if target == TRASH_PATH {
+		err := browser_navigate(b, target)
+		if err == nil {path_edit_end(edit)}
+		return err
+	}
+	if target == "~" || strings.has_prefix(target, "~/") {
+		home := sdl.GetUserFolder(.HOME)
+		if home != nil {target = fmt.tprintf("%s%s", string(home), target[1:])}
+	} else if !strings.has_prefix(target, "/") {
+		base := b.path
+		if base == TRASH_PATH {
+			home := sdl.GetUserFolder(.HOME)
+			if home != nil {base = string(home)}
+		}
+		target = fmt.tprintf("%s/%s", base, target)
+	}
+	err := browser_navigate(b, target)
+	if err == nil {path_edit_end(edit)}
+	return err
+}
+
 path_edit_input :: proc(
 	b: ^Browser,
 	event: ^sdl.Event,
@@ -368,22 +394,7 @@ path_edit_input :: proc(
 			path_edit_end(edit)
 		case sdl.K_RETURN, sdl.K_KP_ENTER:
 			if event.key.repeat || edit.composition != "" {return true, nil}
-			if edit.mode == .Search {search_blur(edit); return true, nil}
-			if edit_is_dialog(edit.mode) {file_dialog_submit(b); return true, nil}
-			target := strings.to_string(edit.buffer)
-			if target == "" {browser_message(b, "enter a folder path"); return true, nil}
-			if target ==
-			   TRASH_PATH {err = browser_navigate(b, target); if err == nil {path_edit_end(edit)}; return true, err}
-			if target == "~" || strings.has_prefix(target, "~/") {
-				home := sdl.GetUserFolder(.HOME)
-				if home != nil {target = fmt.tprintf("%s%s", string(home), target[1:])}
-			} else if !strings.has_prefix(target, "/") {base := b.path
-				if base ==
-				   TRASH_PATH {home := sdl.GetUserFolder(.HOME); if home != nil {base = string(home)}}
-				target = fmt.tprintf("%s/%s", base, target)}
-			err = browser_navigate(b, target)
-			if err == nil {path_edit_end(edit)}
-			return true, err
+			return true, path_edit_submit(b, edit)
 		}
 		return true, nil // File actions and navigation stay inactive while editing.
 	}
@@ -462,6 +473,13 @@ path_edit_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 	prefix := f32(text_width(p.font, path_edit_display(edit, display[:low])))
 	selection_width := f32(text_width(p.font, path_edit_display(edit, display[:high]))) - prefix
 	display = path_edit_display(edit, display)
+	placeholder := ""
+	#partial switch edit.mode {
+	case .Search:
+		placeholder = "search"
+	case .Password:
+		placeholder = "password"
+	}
 	if clay.UI()(
 	{
 		layout = {
@@ -524,7 +542,7 @@ path_edit_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 						pointerCaptureMode = .Passthrough,
 					},
 				},
-				) {label(display == "" && edit.mode == .Search ? "search" : display == "" && edit.mode == .Password ? "password" : display, display == "" ? theme.muted : theme.text, g.font_size)}
+				) {label(display == "" ? placeholder : display, display == "" ? theme.muted : theme.text, g.font_size)}
 				if edit.active && (low == high || edit.composition != "") {
 					if clay.UI(clay.ID("path-edit-caret"))(
 					{

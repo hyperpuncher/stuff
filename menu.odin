@@ -17,6 +17,8 @@ Menu_Action :: enum {
 	Trash,
 	Select_All,
 }
+MENU_ACTION_COUNT :: len([Menu_Action]bool{})
+
 Context_Menu :: struct {
 	active, paste, places: bool,
 	x, y, width:           f32,
@@ -191,7 +193,7 @@ menu_input :: proc(b: ^Browser, event: ^sdl.Event, g: Geometry) -> bool {
 			b.menu.active = false
 		case sdl.K_UP, sdl.K_DOWN, sdl.K_HOME, sdl.K_END:
 			i := b.menu.selected
-			count := len([Menu_Action]bool{})
+			count := MENU_ACTION_COUNT
 			direction := event.key.key == sdl.K_UP || event.key.key == sdl.K_END ? -1 : 1
 			if event.key.key == sdl.K_HOME {i = -1}
 			if event.key.key == sdl.K_END || i < 0 && direction < 0 {i = count}
