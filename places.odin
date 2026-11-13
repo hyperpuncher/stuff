@@ -117,9 +117,7 @@ places_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter) {
 		if clay.UI()({layout = list_layout(g)}) {
 			if clay.UI(clay.ID("places-viewport"))(viewport_config()) {
 				active := places_active(&b.places, b.path)
-				inset := u16(6 * g.scale)
-				right_inset := inset
-				if len(b.places.entries) > g.rows {right_inset = u16(7 * g.scale)}
+				inset, right_inset := list_insets(len(b.places.entries), g.rows, g.scale)
 				for i in b.places.first ..< min(b.places.first + g.rows + 1, len(b.places.entries)) {
 					place := b.places.entries[i]
 					if place.section {

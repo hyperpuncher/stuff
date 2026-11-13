@@ -92,11 +92,11 @@ menu_enabled :: proc(b: ^Browser, action: Menu_Action) -> bool {
 
 menu_action_at :: proc(b: ^Browser, g: Geometry, x, y: f32) -> int {
 	box := menu_box(b, g)
-	if x < box.x ||
-	   x >= box.x + box.width ||
-	   y < box.y + 4 * g.scale ||
-	   y >= box.y + box.height - 4 * g.scale {return -1}
-	row := b.menu.first + int((y - box.y - 4 * g.scale) / g.row)
+	inner := box
+	inner.y += 4 * g.scale
+	inner.height -= 8 * g.scale
+	if !box_contains(inner, x, y) {return -1}
+	row := b.menu.first + int((y - inner.y) / g.row)
 	for action in Menu_Action {
 		if !menu_visible(b, action) {continue}
 		if row == 0 {return int(action)}

@@ -127,12 +127,7 @@ scrollbar_hit :: proc(b: ^Browser, g: Geometry, x, y: f32) -> (places: bool, hit
 	places = x < g.sidebar
 	bar := scrollbar_for(b, g, places)
 	box := bar.track
-	return places,
-		box.height > 0 &&
-		x >= box.x &&
-		x < box.x + box.width &&
-		y >= box.y &&
-		y < box.y + box.height
+	return places, box.height > 0 && box_contains(box, x, y)
 }
 
 scrollbar_motion :: proc(b: ^Browser, g: Geometry, x, y: f32) -> bool {
@@ -250,13 +245,7 @@ table_scrollbar :: proc(b: ^Browser, g: Geometry) -> Scrollbar {
 
 table_scrollbar_hit :: proc(b: ^Browser, g: Geometry, x, y: f32) -> bool {
 	box := table_scrollbar(b, g).track
-	return(
-		box.width > 0 &&
-		x >= box.x &&
-		x < box.x + box.width &&
-		y >= box.y &&
-		y < box.y + box.height \
-	)
+	return box.width > 0 && box_contains(box, x, y)
 }
 
 table_scrollbar_press :: proc(b: ^Browser, g: Geometry, x, y: f32) {

@@ -57,14 +57,7 @@ header_update :: proc(h: ^Header, now: u64) -> bool {
 header_hit :: proc(id: clay.ElementId, x, y: f32) -> bool {
 	if clay.GetCurrentContext() == nil {return false}
 	element := clay.GetElementData(id)
-	box := element.boundingBox
-	return(
-		element.found &&
-		x >= box.x &&
-		y >= box.y &&
-		x < box.x + box.width &&
-		y < box.y + box.height \
-	)
+	return element.found && box_contains(element.boundingBox, x, y)
 }
 
 header_target :: proc(h: ^Header, x, y: f32) -> u32 {

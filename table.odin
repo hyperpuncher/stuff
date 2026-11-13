@@ -12,6 +12,10 @@ THUMBNAIL_PIXELS :: 256
 MIN_WINDOW_WIDTH :: SIDEBAR_WIDTH + 592
 MIN_WINDOW_HEIGHT :: 240
 
+box_contains :: proc(box: clay.BoundingBox, x, y: f32) -> bool {
+	return x >= box.x && y >= box.y && x < box.x + box.width && y < box.y + box.height
+}
+
 Geometry :: struct {
 	width, height, scale, tabs, header, footer, row, list_top: f32,
 	padding, gap, sidebar, list_padding, font_size:            f32,
@@ -120,6 +124,14 @@ row_at :: proc(g: Geometry, y: f32, first, count: int) -> int {
 	if y < g.list_top || y >= list_bottom(g) {return -1}
 	index := first + int((y - g.list_top) / g.row)
 	return index < count ? index : -1
+}
+
+// The extra right inset clears the vertical scrollbar thumb when it is shown.
+list_insets :: proc(count, rows: int, scale: f32) -> (left, right: u16) {
+	left = u16(6 * scale)
+	right = left
+	if count > rows {right = u16(7 * scale)}
+	return
 }
 
 row_layout :: proc(g: Geometry) -> clay.LayoutConfig {
@@ -240,9 +252,7 @@ table_row :: proc(b: ^Browser, index: int, g: Geometry, p: ^Painter) {
 		if b.places.focused {color = theme.inactive_selection}
 	}
 	color = hover_color(b, clay.ID("row", u32(source)), color)
-	inset := u16(6 * g.scale)
-	right_inset := inset
-	if len(b.visible) > g.rows {right_inset = u16(7 * g.scale)}
+	inset, right_inset := list_insets(len(b.visible), g.rows, g.scale)
 	inner := row_layout(g)
 	inner.sizing.height = clay.SizingGrow()
 	inner.padding.left -= inset

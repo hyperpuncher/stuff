@@ -34,9 +34,7 @@ item_at :: proc(g: Geometry, x, y: f32, first, count: int) -> int {
 	if column < 0 || column >= g.stride {return -1}
 	index := first + int((y - g.list_top) / g.cell_height) * g.stride + column
 	if index >= count {return -1}
-	box := item_box(g, index, first)
-	if x < box.x || x >= box.x + box.width || y < box.y || y >= box.y + box.height {return -1}
-	return index
+	return box_contains(item_box(g, index, first), x, y) ? index : -1
 }
 
 view_reveal :: proc(b: ^Browser, g: Geometry) {

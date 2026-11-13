@@ -71,10 +71,7 @@ pointer_cursor :: proc(b: ^Browser, g: Geometry) -> sdl.SystemCursor {
 	if b.pointer.active && file_transfer_hit(b, g, b.pointer.x, b.pointer.y) >= 0 {return .POINTER}
 	if (b.header.edit.active || b.header.edit.mode == .Search) && b.pointer.active {
 		box := path_edit_box(g, b.header.edit.mode)
-		if b.pointer.x >= box.x &&
-		   b.pointer.x < box.x + box.width &&
-		   b.pointer.y >= box.y &&
-		   b.pointer.y < box.y + box.height {return .TEXT}
+		if box_contains(box, b.pointer.x, b.pointer.y) {return .TEXT}
 	}
 	if b.header.edit.active &&
 	   edit_is_dialog(b.header.edit.mode) {return b.hovered != 0 ? .POINTER : .DEFAULT}

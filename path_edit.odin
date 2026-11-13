@@ -278,10 +278,7 @@ path_edit_input :: proc(
 	   !edit.active &&
 	   event.button.button == sdl.BUTTON_LEFT {
 		box := path_edit_box(g)
-		if event.button.x >= box.x &&
-		   event.button.x < box.x + box.width &&
-		   event.button.y >= box.y &&
-		   event.button.y < box.y + box.height {edit.active = true}
+		if box_contains(box, event.button.x, event.button.y) {edit.active = true}
 	}
 	if event.type == .KEY_DOWN &&
 	   event.key.key == sdl.K_R &&
@@ -339,10 +336,7 @@ path_edit_input :: proc(
 			) {file_dialog_submit(b); return true, nil}
 		}
 		box := path_edit_box(g, edit.mode)
-		if event.button.x >= box.x &&
-		   event.button.x < box.x + box.width &&
-		   event.button.y >= box.y &&
-		   event.button.y < box.y + box.height {
+		if box_contains(box, event.button.x, event.button.y) {
 			if event.button.button == sdl.BUTTON_LEFT {
 				path_edit_click(edit, g, event.button.x, sdl.GetModState() & sdl.KMOD_SHIFT != {})
 				edit.dragging = true
