@@ -171,10 +171,8 @@ watch_register :: proc(w: ^Watch_Service) {
 watch_register_trash :: proc(w: ^Watch_Service) {
 	home := trash_home_path()
 	defer delete(home)
-	mounts, err := mounts_read()
+	roots, err := trash_roots_all(home)
 	if err != nil {return}
-	defer mounts_destroy(mounts)
-	roots := trash_roots(home, mounts[:])
 	defer trash_roots_destroy(&roots)
 	{
 		sync.mutex_guard(&w.mutex)

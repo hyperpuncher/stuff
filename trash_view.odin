@@ -147,14 +147,20 @@ trash_roots_destroy :: proc(roots: ^[dynamic]Trash_Root) {
 	delete(roots^)
 }
 
+// Mounts are read only to derive the roots; the caller owns the result.
+trash_roots_all :: proc(home: string) -> (roots: [dynamic]Trash_Root, err: os.Error) {
+	mounts, read_err := mounts_read()
+	if read_err != nil {return nil, read_err}
+	defer mounts_destroy(mounts)
+	return trash_roots(home, mounts[:]), nil
+}
+
 trash_view_read :: proc(op: ^File_Operation) {
 	op.records = make(map[string]File_Change)
 	seen := make(map[[2]u64]bool)
 	defer delete(seen)
-	mounts, err := mounts_read()
+	roots, err := trash_roots_all(op.trash_home)
 	if err != nil {file_operation_failed(op, TRASH_PATH, err); return}
-	defer mounts_destroy(mounts)
-	roots := trash_roots(op.trash_home, mounts[:])
 	defer trash_roots_destroy(&roots)
 	for root in roots {
 		if sync.atomic_load(&op.cancel) {return}

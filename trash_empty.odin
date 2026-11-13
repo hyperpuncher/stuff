@@ -8,10 +8,8 @@ import linux "core:sys/linux"
 // Empty every trash root this user can see. Files without a .trashinfo record
 // are removed too, because they are trash even when the view cannot list them.
 trash_empty_run :: proc(op: ^File_Operation) {
-	mounts, err := mounts_read()
+	roots, err := trash_roots_all(op.trash_home)
 	if err != nil {file_operation_failed(op, TRASH_PATH, err); return}
-	defer mounts_destroy(mounts)
-	roots := trash_roots(op.trash_home, mounts[:])
 	defer trash_roots_destroy(&roots)
 	for root in roots {
 		if sync.atomic_load(&op.cancel) {return}
