@@ -118,8 +118,7 @@ size_destroy :: proc(s: ^Size_Service) {
 }
 
 size_wake :: proc(s: ^Size_Service) {
-	byte := [1]u8{1}
-	for {_, err := linux.write(s.wake[1], byte[:]); if err != .EINTR {break}}
+	wake_fd(s.wake[1])
 }
 
 size_cancel :: proc(b: ^Browser) {
@@ -507,12 +506,7 @@ size_publish :: proc(scan: ^Size_Scan) {
 	}
 	sync.mutex_unlock(&s.mutex)
 	if !wake {return}
-	event := sdl.Event {
-		type = s.event,
-	}
-	if !sdl.PushEvent(
-		&event,
-	) {fmt.eprintfln("cannot deliver size update: %s", string(sdl.GetError()))}
+	notify_ui(s.event, "size update")
 }
 
 size_walk_root :: proc(scan: ^Size_Scan) -> (i64, bool) {

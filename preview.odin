@@ -398,12 +398,7 @@ preview_worker :: proc(s: ^Preview_Service) {
 		append(&s.results, Preview_Result{request, surface})
 		sync.mutex_unlock(&s.mutex)
 		if wake {
-			event := sdl.Event {
-				type = s.event,
-			}
-			if !sdl.PushEvent(
-				&event,
-			) {fmt.eprintfln("cannot deliver preview: %s", string(sdl.GetError()))}
+			notify_ui(s.event, "preview")
 		}
 	}
 }

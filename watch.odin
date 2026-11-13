@@ -65,8 +65,7 @@ watch_result_destroy :: proc(result: ^Watch_Result) {
 }
 
 watch_wake :: proc(w: ^Watch_Service) {
-	byte := [1]u8{1}
-	for {_, err := linux.write(w.wake[1], byte[:]); if err != .EINTR {break}}
+	wake_fd(w.wake[1])
 }
 
 watch_start :: proc() -> ^Watch_Service {
@@ -116,6 +115,11 @@ watch_forget :: proc(w: ^Watch_Service, wd: linux.Wd) {
 	delete_key(&w.paths, dir.path)
 	delete_key(&w.directories, wd)
 	delete(dir.path)
+}
+
+// Call with the watcher mutex held. delete_key is safe while iterating.
+watch_forget_all :: proc(w: ^Watch_Service) {
+	for wd in w.directories {watch_forget(w, wd)}
 }
 
 watch_add :: proc(w: ^Watch_Service, path: string, fd: linux.Fd, trash := false) -> bool {
@@ -243,7 +247,7 @@ watch_read :: proc(w: ^Watch_Service, batch: ^Watch_Result) {
 			if .Q_OVERFLOW in event.mask {
 				watch_overflow(batch)
 				batch.listing, batch.trash = true, w.trash
-				for wd in w.directories {watch_forget(w, wd)}
+				watch_forget_all(w)
 				w.configure = true
 				continue
 			}
@@ -310,12 +314,7 @@ watch_publish :: proc(w: ^Watch_Service, batch: ^Watch_Result) {
 	delete(old_path)
 	batch^ = {}
 	if wake {
-		event := sdl.Event {
-			type = w.event,
-		}
-		if !sdl.PushEvent(
-			&event,
-		) {fmt.eprintfln("cannot deliver folder update: %s", string(sdl.GetError()))}
+		notify_ui(w.event, "folder update")
 	}
 }
 
@@ -331,7 +330,7 @@ watch_worker :: proc(w: ^Watch_Service) {
 		sync.mutex_lock(&w.mutex)
 		stop, configure, refresh, trash := w.stop, w.configure, w.refresh, w.trash
 		if w.reset {
-			for wd in w.directories {watch_forget(w, wd)}
+			watch_forget_all(w)
 			watch_overflow(&batch)
 			batch.listing, batch.trash = true, trash
 			w.reset = false

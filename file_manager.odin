@@ -147,12 +147,7 @@ file_manager_message :: proc(manager: ^File_Manager, message: ^Bus_Message) -> ^
 		append(&manager.requests, request)
 		sync.mutex_unlock(&manager.mutex)
 		if wake {
-			event := sdl.Event {
-				type = manager.event,
-			}
-			if !sdl.PushEvent(
-				&event,
-			) {fmt.eprintfln("cannot deliver file manager request: %s", string(sdl.GetError()))}
+			notify_ui(manager.event, "file manager request")
 		}
 	} else {file_paths_destroy(request.paths)}
 	// Acknowledge accepted requests; filesystem errors are shown by the UI.

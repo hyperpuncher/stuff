@@ -49,11 +49,7 @@ storage_result_destroy :: proc(result: Storage_Result) {
 }
 
 storage_wake :: proc(s: ^Storage) {
-	byte := [1]u8{1}
-	for {
-		_, err := linux.write(s.wake[1], byte[:])
-		if err != .EINTR {break} 	// EAGAIN means a wake is already queued.
-	}
+	wake_fd(s.wake[1])
 }
 
 storage_publish :: proc(s: ^Storage, result: Storage_Result) {
@@ -72,12 +68,7 @@ storage_publish :: proc(s: ^Storage, result: Storage_Result) {
 	append(&s.results, result)
 	sync.mutex_unlock(&s.mutex)
 	if !wake {return}
-	event := sdl.Event {
-		type = s.event,
-	}
-	if !sdl.PushEvent(
-		&event,
-	) {fmt.eprintfln("cannot deliver storage update: %s", string(sdl.GetError()))}
+	notify_ui(s.event, "storage update")
 }
 
 storage_start :: proc(path: string) -> ^Storage {
