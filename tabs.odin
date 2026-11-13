@@ -34,7 +34,7 @@ tab_refresh :: proc(b: ^Browser) -> os.Error {
 	}
 	dir := directory_open(b.path) or_return
 	defer os.close(dir)
-	entries := os.read_all_directory(dir, context.allocator) or_return
+	entries := list_entries(dir, b.path) or_return
 	browser_replace_entries(b, entries)
 	return nil
 }

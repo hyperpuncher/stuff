@@ -45,6 +45,7 @@ browser_replace_entries :: proc(b: ^Browser, entries: []os.File_Info) {
 	b.entries = entries
 	file_drag_cancel_press(b)
 	sort_restore(b)
+	browser_sort_entries(b)
 	browser_filter(b)
 	browser_restore_location(b, location, cursor)
 	selection_clear(b)

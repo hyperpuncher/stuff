@@ -359,7 +359,7 @@ watch_worker :: proc(w: ^Watch_Service) {
 					dir, err := directory_open(batch.path)
 					batch.error = err
 					if err == nil {
-						batch.entries, batch.error = os.read_all_directory(dir, context.allocator)
+						batch.entries, batch.error = list_entries(dir, batch.path)
 						os.close(dir)
 					}
 				}

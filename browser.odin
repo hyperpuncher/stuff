@@ -143,8 +143,8 @@ browser_read :: proc(b: ^Browser, path: string) -> os.Error {
 	}
 	dir := directory_open(path) or_return
 	defer os.close(dir)
-	entries := os.read_all_directory(dir, context.allocator) or_return
 	absolute := strings.clone(os.name(dir))
+	entries := list_entries(dir, absolute) or_return
 	if b.path != absolute {
 		// Keep the current choice even if this folder used the default sort.
 		sort_remember(b, persist = false)
@@ -165,6 +165,7 @@ browser_read :: proc(b: ^Browser, path: string) -> os.Error {
 	b.trash_records = nil
 	b.path, b.entries = absolute, entries
 	sort_restore(b)
+	browser_sort_entries(b)
 	browser_message(b, "")
 	browser_filter(b)
 	storage_path(b.storage, b.path)
@@ -176,6 +177,8 @@ browser_filter :: proc(b: ^Browser, reset_selection := true) {
 	b.selection_drag = {}
 	query_runes := utf8.rune_count_in_string(b.search)
 	clear(&b.visible)
+	// Entries are kept in display order (browser_sort_entries), so the rows
+	// read out sorted and the sort below only verifies.
 	for entry, i in b.entries {
 		if b.path != TRASH_PATH && !b.show_hidden && strings.has_prefix(entry.name, ".") {continue}
 		if !search_matches(entry.name, b.search, query_runes) {continue}
@@ -228,6 +231,50 @@ browser_sort :: proc(b: ^Browser) {
 		if source == selected_source {b.selected = i; break}
 	}
 	b.anchor = b.selected
+}
+
+// Sort the listing itself, before any selection marks exist. Rows then read
+// out in order, so browser_filter never pays a fresh index sort.
+browser_sort_entries :: proc(b: ^Browser) {
+	Sort_Data :: struct {
+		browser: ^Browser,
+		types:   []string,
+	}
+	data := Sort_Data {
+		browser = b,
+	}
+	if b.sort_column == .Type {
+		data.types = make([]string, len(b.entries), context.temp_allocator)
+		for source in 0 ..< len(b.entries) {data.types[source] = entry_type(b.entries[source])}
+	}
+	order := make([]int, len(b.entries), context.temp_allocator)
+	for i in 0 ..< len(order) {order[i] = i}
+	slice.sort_by_with_data(order, proc(i, j: int, data: rawptr) -> bool {
+			data := cast(^Sort_Data)data
+			b := data.browser
+			a, z := b.entries[i], b.entries[j]
+			if (a.type == .Directory) != (z.type == .Directory) {return a.type == .Directory}
+			order: slice.Ordering
+			switch b.sort_column {
+			case .Name:
+				order = slice.cmp(a.name, z.name)
+			case .Size:
+				order = slice.cmp(size_value(b, a), size_value(b, z))
+			case .Type:
+				order = slice.cmp(data.types[i], data.types[j])
+			case .Modified:
+				order = slice.cmp(
+					time.to_unix_nanoseconds(a.modification_time),
+					time.to_unix_nanoseconds(z.modification_time),
+				)
+			}
+			if order != .Equal {return (order == .Less) != b.descending}
+			return a.name < z.name
+		}, &data)
+	move := make([]os.File_Info, len(b.entries))
+	defer delete(move)
+	for i in 0 ..< len(order) {move[i] = b.entries[order[i]]}
+	copy(b.entries, move[:])
 }
 
 browser_set_sort :: proc(b: ^Browser, column: Column) {
@@ -323,6 +370,76 @@ reveal_rows :: proc(selected, first: ^int, count, visible_rows: int) {
 	if selected^ < first^ {first^ = selected^}
 	if selected^ >= first^ + rows {first^ = selected^ - rows + 1}
 	first^ = clamp(first^, 0, max(0, count - rows))
+}
+
+stat_file_type :: proc(mode: linux.Mode) -> os.File_Type {
+	switch mode & linux.S_IFMT {
+	case linux.S_IFBLK:
+		return .Block_Device
+	case linux.S_IFCHR:
+		return .Character_Device
+	case linux.S_IFDIR:
+		return .Directory
+	case linux.S_IFIFO:
+		return .Named_Pipe
+	case linux.S_IFLNK:
+		return .Symlink
+	case linux.S_IFREG:
+		return .Regular
+	case linux.S_IFSOCK:
+		return .Socket
+	}
+	return .Undetermined
+}
+
+// One getdents pass and one fstatat per entry. core:os's directory iterator
+// pays an O_PATH open, a statx, and a /proc readlink per entry, which measured
+// six times slower on a 100k folder.
+list_entries :: proc(dir: ^os.File, folder: string) -> (entries: []os.File_Info, err: os.Error) {
+	fd := linux.Fd(os.fd(dir))
+	buffer := make([]u8, 64 * 1024)
+	defer delete(buffer)
+	prefix := strings.concatenate({folder == "/" ? "" : folder, "/"})
+	defer delete(prefix)
+	out := make([dynamic]os.File_Info, 0, 256)
+	for {
+		n, read_err := linux.getdents(fd, buffer)
+		if read_err == linux.Errno.EINTR {continue}
+		if read_err != .NONE {
+			for &info in out {os.file_info_delete(info, context.allocator)}
+			delete(out)
+			return nil, read_err
+		}
+		if n == 0 {break}
+		offset := 0
+		for d in linux.dirent_iterate_buf(buffer[:n], &offset) {
+			name := linux.dirent_name(d)
+			if name == "." || name == ".." {continue}
+			st: linux.Stat
+			// Entries that vanish mid-scan are skipped, not failures.
+			if linux.fstatat(fd, cstring(raw_data(name)), &st, {.SYMLINK_NOFOLLOW}) !=
+			   .NONE {continue}
+			fullpath := strings.concatenate({prefix, name})
+			append(
+				&out,
+				os.File_Info {
+					fullpath          = fullpath,
+					// core:os owns only fullpath; name aliases it (file_info_delete).
+					name              = fullpath[len(prefix):],
+					inode             = u128(u64(st.ino)),
+					device            = u64(st.dev),
+					size              = i64(st.size),
+					mode              = transmute(os.Permissions)(0o7777 & transmute(u32)st.mode),
+					type              = stat_file_type(st.mode),
+					modification_time = time.Time {
+						i64(st.mtime.time_sec) * i64(time.Second) + i64(st.mtime.time_nsec),
+					},
+				},
+			)
+		}
+	}
+	entries = out[:]
+	return
 }
 
 history_entry_destroy :: proc(entry: History_Entry) {

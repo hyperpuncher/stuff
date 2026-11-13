@@ -530,7 +530,7 @@ size_walk_dir :: proc(
 	ok: bool,
 ) {
 	if !size_scan_current(scan) {return 0, false}
-	buffer := make([]u8, 4096)
+	buffer := make([]u8, 32 * 1024)
 	defer delete(buffer)
 	for {
 		n, err := linux.getdents(fd, buffer)
