@@ -376,6 +376,10 @@ preview_poll :: proc(s: ^Preview_Service, renderer: ^sdl.Renderer) -> bool {
 
 preview_worker :: proc(s: ^Preview_Service) {
 	context.allocator = s.allocator
+	// Decoding competes with the ui for the same cores; scans already yield.
+	if priority, err := linux.getpriority(.PROCESS, 0); err == .NONE && priority < 10 {
+		_ = linux.setpriority(.PROCESS, 0, 10)
+	}
 	for {
 		sync.mutex_lock(&s.mutex)
 		for !s.stop && len(s.queue) == 0 {sync.cond_wait(&s.changed, &s.mutex)}
