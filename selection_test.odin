@@ -267,3 +267,37 @@ context_menu_preserves_groups_and_captures_input :: proc(t: ^testing.T) {
 	testing.expect(t, !b.menu.active)
 	testing.expect_value(t, len(b.marks), 3)
 }
+
+@(test)
+space_toggles_the_cursor_row :: proc(t: ^testing.T) {
+	b: Browser
+	defer browser_destroy(&b)
+	b.entries = make([]os.File_Info, 3)
+	for &entry, i in b.entries {
+		entry.fullpath = fmt.aprintf("/tmp/space-%d", i)
+		entry.name = entry.fullpath
+		entry.type, entry.size = .Regular, i64(10)
+	}
+	browser_filter(&b)
+	// The filter marks the cursor row already; the first space clears it.
+	g, running := geometry(960, 640, 1), true
+	space := sdl.Event {
+		key = {type = .KEY_DOWN, key = sdl.K_SPACE},
+	}
+	testing.expect(t, handle_event(&b, &space, g, &running))
+	testing.expect_value(t, len(b.marks), 0)
+	// The next space marks the cursor row again.
+	testing.expect(t, handle_event(&b, &space, g, &running))
+	testing.expect(t, b.marks[b.visible[0]])
+	// Repeats must not flip the mark.
+	space.key.repeat = true
+	_ = handle_event(&b, &space, g, &running)
+	testing.expect_value(t, len(b.marks), 1)
+	// Toggling marks the cursor row only and leaves the cursor in place.
+	space.key.repeat = false
+	b.selected = 2
+	testing.expect(t, handle_event(&b, &space, g, &running))
+	// The toggle adds the cursor row without clearing other marks.
+	testing.expect(t, b.marks[b.visible[0]] && b.marks[b.visible[2]])
+	testing.expect_value(t, b.selected, 2)
+}

@@ -147,6 +147,12 @@ selection_extend :: proc(b: ^Browser, row: int, add: bool) {
 	for i in min(b.anchor, b.selected) ..= max(b.anchor, b.selected) {selection_mark(b, i, true)}
 }
 
+// Space toggles the mark on the cursor row without moving the cursor.
+selection_toggle :: proc(b: ^Browser, row: int) {
+	if row < 0 || row >= len(b.visible) {return}
+	selection_mark(b, row, !b.marks[b.visible[row]])
+}
+
 selection_click :: proc(b: ^Browser, row: int, ctrl, shift: bool) {
 	if shift {selection_extend(b, row, ctrl); return}
 	if !ctrl {selection_single(b, row); return}

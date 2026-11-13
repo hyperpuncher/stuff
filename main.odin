@@ -154,12 +154,14 @@ handle_input :: proc(
 			paste := ctrl && key == sdl.K_V || shift && !ctrl && key == sdl.K_INSERT
 			all := ctrl && key == sdl.K_A
 			trash := key == sdl.K_DELETE
-			if copy || paste || all || trash {
+			toggle := key == sdl.K_SPACE
+			if copy || paste || all || trash || toggle {
 				if event.key.repeat {return false, nil}
 				if copy {file_clipboard_copy(b)}
 				if paste {file_operation_start(b, false)}
 				if all {selection_all(b)}
 				if trash {file_operation_start(b, true)}
+				if toggle {selection_toggle(b, b.selected)}
 				return true, nil
 			}
 			if key == sdl.K_ESCAPE {selection_clear(b); return true, nil}
