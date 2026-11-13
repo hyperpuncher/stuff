@@ -272,3 +272,32 @@ pointer_selection_respects_list_bounds :: proc(t: ^testing.T) {
 	event.button.y = g.list_top + 1
 	testing.expect(t, handle_event(&b, &event, g, &running))
 }
+
+@(test)
+sort_orders_names_without_case :: proc(t: ^testing.T) {
+	root, err := os.make_directory_temp("/tmp", "stuff-case-sort-", context.allocator)
+	if err != nil {testing.fail_now(t, "cannot create case sort fixture")}
+	defer delete(root)
+	defer os.remove_all(root)
+	for name in ([?]string{"Zebra", "apple", "Banana", "Apple"}) {
+		testing.expect(t, os.write_entire_file(fmt.tprintf("%s/%s", root, name), "x") == nil)
+	}
+
+	b: Browser
+	defer browser_destroy(&b)
+	testing.expect(t, browser_load(&b, root) == nil)
+	// Case-insensitive order; names differing only by case keep byte order.
+	seen := [4]string{}
+	for i in 0 ..< len(seen) {seen[i] = b.entries[b.visible[i]].name}
+	testing.expect_value(t, seen[0], "Apple")
+	testing.expect_value(t, seen[1], "apple")
+	testing.expect_value(t, seen[2], "Banana")
+	testing.expect_value(t, seen[3], "Zebra")
+
+	// Descending reverses the column; case ties keep byte order.
+	browser_set_sort(&b, .Name)
+	testing.expect_value(t, b.entries[b.visible[0]].name, "Zebra")
+	testing.expect_value(t, b.entries[b.visible[1]].name, "Banana")
+	testing.expect_value(t, b.entries[b.visible[2]].name, "Apple")
+	testing.expect_value(t, b.entries[b.visible[3]].name, "apple")
+}

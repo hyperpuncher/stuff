@@ -52,7 +52,7 @@ search_shortcuts_filter_unicode_names_and_preserve_pointer_targets :: proc(t: ^t
 			type = .MOUSE_BUTTON_DOWN,
 			button = sdl.BUTTON_LEFT,
 			x = g.sidebar + 20,
-			y = g.list_top + g.row + 1,
+			y = g.list_top + 1,
 			clicks = 1,
 		},
 	}

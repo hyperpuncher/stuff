@@ -7,6 +7,7 @@ import "core:strings"
 import "core:sync"
 import linux "core:sys/linux"
 import "core:time"
+import "core:unicode"
 import "core:unicode/utf8"
 import sdl "vendor:sdl3"
 
@@ -188,45 +189,76 @@ browser_filter :: proc(b: ^Browser, reset_selection := true) {
 	if reset_selection {selection_single(b, 0); b.first = 0}
 }
 
+// One sort context shared by the visible-row sort and the listing sort.
+Sort_Data :: struct {
+	browser: ^Browser,
+	types:   []string,
+}
+
+// Case-insensitive rune-wise name order. ASCII bytes fold inline; any
+// multibyte rune folds through unicode.to_lower. The names compare in
+// place, so sorting pays no copies and no per-entry allocations.
+browser_name_order :: proc(a, z: string) -> slice.Ordering {
+	i, j := 0, 0
+	for i < len(a) && j < len(z) {
+		ca, cz := a[i], z[j]
+		if ca < utf8.RUNE_SELF && cz < utf8.RUNE_SELF {
+			la := ca if !('A' <= ca && ca <= 'Z') else ca + ('a' - 'A')
+			lz := cz if !('A' <= cz && cz <= 'Z') else cz + ('a' - 'A')
+			if la != lz {return la < lz ? .Less : .Greater}
+			i, j = i + 1, j + 1
+			continue
+		}
+		ra, wa := utf8.decode_rune_in_string(a[i:])
+		rz, wz := utf8.decode_rune_in_string(z[j:])
+		la, lz := unicode.to_lower(ra), unicode.to_lower(rz)
+		if la != lz {return slice.cmp(la, lz)}
+		i, j = i + wa, j + wz
+	}
+	// A name that runs out first sorts first; equal remainders are equal.
+	return slice.cmp(len(a) - i, len(z) - j)
+}
+
+// Rows compare by the active column, directories first; names that differ
+// only by case fall back to byte order for a deterministic result.
+browser_rows_less :: proc(i, j: int, user: rawptr) -> bool {
+	data := cast(^Sort_Data)user
+	b := data.browser
+	a, z := b.entries[i], b.entries[j]
+	if (a.type == .Directory) != (z.type == .Directory) {return a.type == .Directory}
+	order: slice.Ordering
+	switch b.sort_column {
+	case .Name:
+		order = browser_name_order(a.name, z.name)
+	case .Size:
+		order = slice.cmp(size_value(b, a), size_value(b, z))
+	case .Type:
+		order = slice.cmp(data.types[i], data.types[j])
+	case .Modified:
+		order = slice.cmp(
+			time.to_unix_nanoseconds(a.modification_time),
+			time.to_unix_nanoseconds(z.modification_time),
+		)
+	}
+	if order != .Equal {return (order == .Less) != b.descending}
+	return a.name < z.name
+}
+
 browser_sort :: proc(b: ^Browser) {
 	selected_source := -1
 	if b.selected >= 0 && b.selected < len(b.visible) {
 		selected_source = b.visible[b.selected]
 	}
-	Sort_Data :: struct {
-		browser: ^Browser,
-		types:   []string,
-	}
 	data := Sort_Data {
 		browser = b,
 	}
-	if b.sort_column == .Type {
-		// Normalize once per entry, not on every comparison.
+	// Normalize once per entry, not on every comparison.
+	#partial switch b.sort_column {
+	case .Type:
 		data.types = make([]string, len(b.entries), context.temp_allocator)
 		for source in b.visible {data.types[source] = entry_type(b.entries[source])}
 	}
-	slice.sort_by_with_data(b.visible[:], proc(i, j: int, data: rawptr) -> bool {
-			data := cast(^Sort_Data)data
-			b := data.browser
-			a, z := b.entries[i], b.entries[j]
-			if (a.type == .Directory) != (z.type == .Directory) {return a.type == .Directory}
-			order: slice.Ordering
-			switch b.sort_column {
-			case .Name:
-				order = slice.cmp(a.name, z.name)
-			case .Size:
-				order = slice.cmp(size_value(b, a), size_value(b, z))
-			case .Type:
-				order = slice.cmp(data.types[i], data.types[j])
-			case .Modified:
-				order = slice.cmp(
-					time.to_unix_nanoseconds(a.modification_time),
-					time.to_unix_nanoseconds(z.modification_time),
-				)
-			}
-			if order != .Equal {return (order == .Less) != b.descending}
-			return a.name < z.name
-		}, &data)
+	slice.sort_by_with_data(b.visible[:], browser_rows_less, &data)
 	for source, i in b.visible {
 		if source == selected_source {b.selected = i; break}
 	}
@@ -236,41 +268,17 @@ browser_sort :: proc(b: ^Browser) {
 // Sort the listing itself, before any selection marks exist. Rows then read
 // out in order, so browser_filter never pays a fresh index sort.
 browser_sort_entries :: proc(b: ^Browser) {
-	Sort_Data :: struct {
-		browser: ^Browser,
-		types:   []string,
-	}
 	data := Sort_Data {
 		browser = b,
 	}
-	if b.sort_column == .Type {
+	#partial switch b.sort_column {
+	case .Type:
 		data.types = make([]string, len(b.entries), context.temp_allocator)
 		for source in 0 ..< len(b.entries) {data.types[source] = entry_type(b.entries[source])}
 	}
 	order := make([]int, len(b.entries), context.temp_allocator)
 	for i in 0 ..< len(order) {order[i] = i}
-	slice.sort_by_with_data(order, proc(i, j: int, data: rawptr) -> bool {
-			data := cast(^Sort_Data)data
-			b := data.browser
-			a, z := b.entries[i], b.entries[j]
-			if (a.type == .Directory) != (z.type == .Directory) {return a.type == .Directory}
-			order: slice.Ordering
-			switch b.sort_column {
-			case .Name:
-				order = slice.cmp(a.name, z.name)
-			case .Size:
-				order = slice.cmp(size_value(b, a), size_value(b, z))
-			case .Type:
-				order = slice.cmp(data.types[i], data.types[j])
-			case .Modified:
-				order = slice.cmp(
-					time.to_unix_nanoseconds(a.modification_time),
-					time.to_unix_nanoseconds(z.modification_time),
-				)
-			}
-			if order != .Equal {return (order == .Less) != b.descending}
-			return a.name < z.name
-		}, &data)
+	slice.sort_by_with_data(order, browser_rows_less, &data)
 	move := make([]os.File_Info, len(b.entries))
 	defer delete(move)
 	for i in 0 ..< len(order) {move[i] = b.entries[order[i]]}
