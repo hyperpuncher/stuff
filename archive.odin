@@ -565,10 +565,8 @@ archive_run :: proc(op: ^File_Operation) {
 
 archive_execute :: proc(op: ^File_Operation) -> os.Error {
 	if sync.atomic_load(&op.cancel) {return linux.Errno.ECANCELED}
-	dir := directory_open(op.target) or_return
+	dir := operation_target_open(op) or_return
 	defer os.close(dir)
-	delete(op.target)
-	op.target = strings.clone(os.name(dir))
 	if len(op.sources) == 0 {return archive_reject(op, "no archive sources selected")}
 	if op.kind == .Compress {
 		name := strings.clone(os.base(op.destination))

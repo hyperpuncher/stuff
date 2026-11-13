@@ -123,15 +123,13 @@ file_operation_run :: proc(op: ^File_Operation) {
 	if op.history != .Record {file_history_run(op); return}
 	if op.kind == .Compress || op.kind == .Extract {archive_run(op); return}
 	if op.kind == .Copy {
-		dir, err := directory_open(op.target)
+		dir, err := operation_target_open(op)
 		if err != nil {
 			op.failed = len(op.sources)
 			op.error = fmt.aprintf("%s: %s", op.target, os.error_string(err))
 			return
 		}
 		defer os.close(dir)
-		delete(op.target)
-		op.target = strings.clone(os.name(dir))
 		// Count the same tree that will be copied, without following links or
 		// creating destinations. The copy pass reports errors if a source changes.
 		op.progress = {
@@ -278,8 +276,7 @@ file_operation_apply :: proc(b: ^Browser, op: ^File_Operation) -> bool {
 		return true
 	}
 	if op.failed > 0 {
-		verb :=
-			op.kind == .Copy ? "copy" : op.kind == .Compress ? "compress" : op.kind == .Extract ? "extract" : op.kind == .Rename ? "rename" : op.kind == .New_Folder ? "create folder" : op.kind == .Restore ? "restore" : "move to trash"
+		verb := FILE_ACTION_VERBS[op.kind]
 		if op.history != .Record {verb = op.history == .Undo ? "undo" : "redo"}
 		browser_message(
 			b,
@@ -300,8 +297,16 @@ file_operation_apply :: proc(b: ^Browser, op: ^File_Operation) -> bool {
 	return true
 }
 
-// One directory-only open also provides its canonical path through os.name.
-// O_DIRECTORY rejects pipes and devices without opening them for data.
+// Open the operation target and store its canonical path. O_DIRECTORY rejects
+// pipes and devices without opening them for data.
+operation_target_open :: proc(op: ^File_Operation) -> (dir: ^os.File, err: os.Error) {
+	dir = directory_open(op.target) or_return
+	target := strings.clone(os.name(dir))
+	delete(op.target)
+	op.target = target
+	return
+}
+
 directory_open :: proc(
 	path: string,
 	flags: linux.Open_Flags = {},

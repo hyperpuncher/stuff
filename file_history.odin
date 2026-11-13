@@ -18,6 +18,22 @@ File_Action :: enum {
 }
 File_Action_Set :: bit_set[File_Action]
 
+// Present-tense verbs for status messages. Read/empty trash and open-with
+// report their own results before the shared failure summary can run.
+@(rodata)
+FILE_ACTION_VERBS := [File_Action]string {
+	.Copy        = "copy",
+	.Compress    = "compress",
+	.Extract     = "extract",
+	.Trash       = "move to trash",
+	.Rename      = "rename",
+	.New_Folder  = "create folder",
+	.Restore     = "restore",
+	.List_Trash  = "read trash",
+	.Empty_Trash = "empty trash",
+	.Open_With   = "open",
+}
+
 File_History_Mode :: enum {
 	Record,
 	Undo,
