@@ -46,8 +46,30 @@ archive_has_suffix :: proc(name, suffix: string) -> bool {
 	return len(name) >= len(suffix) && strings.equal_fold(name[len(name) - len(suffix):], suffix)
 }
 
+// Compression and container suffixes that stuff can extract.
+@(rodata)
+ARCHIVE_SUFFIXES := [?]string {
+	".tar.zst",
+	".tar.gz",
+	".tar.bz2",
+	".tar.xz",
+	".zip",
+	".7z",
+	".tar",
+	".tgz",
+	".tzst",
+	".tbz2",
+	".txz",
+	".rar",
+	".cab",
+	".cpio",
+	".lha",
+	".lzh",
+	".xar",
+}
+
 archive_stem :: proc(name: string) -> (stem: string, recognized: bool) {
-	for suffix in ([?]string{".tar.zst", ".tar.gz", ".tar.bz2", ".tar.xz", ".zip", ".7z", ".tar", ".tgz", ".tzst", ".tbz2", ".txz", ".rar", ".cab", ".cpio", ".lha", ".lzh", ".xar"}) {
+	for suffix in ARCHIVE_SUFFIXES {
 		if archive_has_suffix(name, suffix) {return name[:len(name) - len(suffix)], true}
 	}
 	return name, false

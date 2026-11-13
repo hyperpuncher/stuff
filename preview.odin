@@ -59,14 +59,13 @@ Preview_Service :: struct {
 preview_supported :: proc(entry: os.File_Info) -> bool {
 	if entry.type != .Regular || entry.size <= 0 || entry.size > PREVIEW_FILE_LIMIT {return false}
 	ext := os.ext(entry.name)
-	return(
-		strings.equal_fold(ext, ".png") ||
-		strings.equal_fold(ext, ".jpg") ||
-		strings.equal_fold(ext, ".jpeg") ||
-		strings.equal_fold(ext, ".gif") ||
-		strings.equal_fold(ext, ".bmp") \
-	)
+	for known in PREVIEW_EXTENSIONS {if strings.equal_fold(ext, known) {return true}}
+	return false
 }
+
+// Extensions that stb decodes for thumbnails.
+@(rodata)
+PREVIEW_EXTENSIONS := [?]string{".png", ".jpg", ".jpeg", ".gif", ".bmp"}
 
 // Buffered reads avoid keeping a second complete copy of the compressed file.
 // The callbacks cannot read or seek past the size checked on the open file.

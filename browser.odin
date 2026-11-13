@@ -241,31 +241,27 @@ browser_set_sort :: proc(b: ^Browser, column: Column) {
 	browser_sort(b)
 }
 
+@(rodata)
+FILE_TYPE_LABELS := [os.File_Type]string {
+	.Undetermined     = "unknown",
+	.Regular          = "file",
+	.Directory        = "folder",
+	.Symlink          = "symlink",
+	.Named_Pipe       = "pipe",
+	.Socket           = "socket",
+	.Block_Device     = "block device",
+	.Character_Device = "character device",
+}
+
 // Lowercase extensions use the temporary allocator. No file reads are needed.
 entry_type :: proc(entry: os.File_Info) -> string {
-	switch entry.type {
-	case .Regular:
+	if entry.type == .Regular {
 		ext := os.ext(entry.name)
 		if len(ext) > 1 && len(ext) < len(entry.name) {
 			return strings.to_lower(ext[1:], context.temp_allocator)
 		}
-		return "file"
-	case .Directory:
-		return "folder"
-	case .Symlink:
-		return "symlink"
-	case .Named_Pipe:
-		return "pipe"
-	case .Socket:
-		return "socket"
-	case .Block_Device:
-		return "block device"
-	case .Character_Device:
-		return "character device"
-	case .Undetermined:
-		return "unknown"
 	}
-	unreachable()
+	return FILE_TYPE_LABELS[entry.type]
 }
 
 // These labels borrow the temporary allocator and must not be retained.

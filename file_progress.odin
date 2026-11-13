@@ -99,24 +99,19 @@ file_progress_input :: proc(b: ^Browser, event: ^sdl.Event, g: Geometry) -> bool
 	return false
 }
 
-file_transfer_icon :: proc(kind: File_Action) -> Icon {
-	switch kind {
-	case .Copy:
-		return .CopyPath
-	case .Compress, .Extract:
-		return .Archive
-	case .Trash, .List_Trash, .Empty_Trash:
-		return .Trash
-	case .Rename:
-		return .Rename
-	case .New_Folder:
-		return .NewFolder
-	case .Restore:
-		return .Restore
-	case .Open_With:
-		return .OpenWith
-	}
-	unreachable()
+// Icons for transfer rows, indexed like FILE_ACTION_VERBS.
+@(rodata)
+FILE_ACTION_ICONS := [File_Action]Icon {
+	.Copy        = .CopyPath,
+	.Compress    = .Archive,
+	.Extract     = .Archive,
+	.Trash       = .Trash,
+	.List_Trash  = .Trash,
+	.Empty_Trash = .Trash,
+	.Rename      = .Rename,
+	.New_Folder  = .NewFolder,
+	.Restore     = .Restore,
+	.Open_With   = .OpenWith,
 }
 
 file_transfers_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter, icon_left: f32) {
@@ -163,7 +158,7 @@ file_transfers_layout :: proc(b: ^Browser, g: Geometry, p: ^Painter, icon_left: 
 					},
 				},
 				) {
-					icon_element(p, file_transfer_icon(job.op.kind), g.scale)
+					icon_element(p, FILE_ACTION_ICONS[job.op.kind], g.scale)
 					if clay.UI()(
 					{
 						layout = {
