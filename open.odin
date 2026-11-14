@@ -32,7 +32,10 @@ file_open :: proc(b: ^Browser, path: string) {
 		archive_extract_start(b, path, parent)
 		return
 	}
-	args := [?]cstring{"xdg-open", cpath, nil}
+	// gio honors Terminal=true and resolves the terminal through
+	// xdg-terminal-exec, so terminal apps open in the chosen emulator.
+	// xdg-open's generic path execs Exec directly instead.
+	args := [?]cstring{"gio", "open", cpath, nil}
 	process := sdl.CreateProcess(raw_data(args[:]), false)
 	if process == nil {
 		browser_message(
@@ -61,7 +64,7 @@ file_open_poll :: proc(b: ^Browser) -> (changed: bool) {
 			browser_message(
 				b,
 				fmt.tprintf(
-					"cannot open %s: xdg-open exited with code %d",
+					"cannot open %s: gio exited with code %d",
 					os.base(job.path),
 					exit_code,
 				),

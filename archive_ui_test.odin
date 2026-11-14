@@ -52,7 +52,7 @@ archive_actions_keep_destinations_and_undo_created_outputs :: proc(t: ^testing.T
 	file_history_test_wait(t, &b)
 	testing.expect_value(t, b.path, elsewhere)
 	testing.expect(t, os.exists(archive))
-	// File opening selects extraction, not xdg-open or an archive browser.
+	// File opening selects extraction, not gio or an archive browser.
 	file_open(&b, archive)
 	testing.expect_value(t, len(b.opens), 0)
 	file_history_test_wait(t, &b)

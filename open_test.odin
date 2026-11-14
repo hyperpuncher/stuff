@@ -31,7 +31,7 @@ file_open_uses_default_handler_without_blocking :: proc(t: ^testing.T) {
 	defer os.remove_all(root)
 	bin := fmt.aprintf("%s/bin", root)
 	defer delete(bin)
-	opener := fmt.aprintf("%s/xdg-open", bin)
+	opener := fmt.aprintf("%s/gio", bin)
 	defer delete(opener)
 	argument := fmt.aprintf("%s/argument", root)
 	defer delete(argument)
@@ -58,8 +58,10 @@ file_open_uses_default_handler_without_blocking :: proc(t: ^testing.T) {
 		) ==
 		nil,
 	)
+	// The stub drops the "open" subcommand, so the assertions below check that
+	// the path arrives as a single verbatim argument.
 	script := fmt.tprintf(
-		"#!/bin/sh\nprintf '%%s' \"$1\" > '%s'\nprintf '%%s' \"$#\" > '%s'\nwhile [ -e '%s' ]; do /bin/sleep 0.01; done\n",
+		"#!/bin/sh\nshift\nprintf '%%s' \"$1\" > '%s'\nprintf '%%s' \"$#\" > '%s'\nwhile [ -e '%s' ]; do /bin/sleep 0.01; done\n",
 		argument,
 		count,
 		gate,

@@ -31,7 +31,7 @@ paru -S stuff-git
 
 ## development
 
-> requires odin, just, SDL3, SDL3_ttf, SDL3_image with SVG support, libudev, libdbus, fontconfig, and xdg-utils. mounting requires UDisks2 and a desktop authorization agent. tests use dbus-daemon.
+> requires odin, just, SDL3, SDL3_ttf, SDL3_image with SVG support, libudev, libdbus, fontconfig, and glib2. mounting requires UDisks2 and a desktop authorization agent. tests use dbus-daemon.
 
 ```sh
 just build

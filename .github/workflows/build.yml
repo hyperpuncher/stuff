@@ -70,7 +70,7 @@ jobs:
         shell: bash
     steps:
       - name: install package tools and dependencies
-        run: pacman -Syu --noconfirm --needed git just odin dbus fontconfig libarchive hicolor-icon-theme sdl3 sdl3_image sdl3_ttf systemd-libs udisks2 wayland xdg-utils ttf-dejavu namcap desktop-file-utils zstd
+        run: pacman -Syu --noconfirm --needed git just odin dbus fontconfig glib2 libarchive hicolor-icon-theme sdl3 sdl3_image sdl3_ttf systemd-libs udisks2 wayland ttf-dejavu namcap desktop-file-utils zstd
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
